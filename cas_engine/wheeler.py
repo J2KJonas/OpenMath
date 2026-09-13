@@ -12,6 +12,16 @@ def worksheet_base64_decode(s: str) -> str:
     Decodes standard Base64 string into 8-bit character stream
     matching the worksheet Base64Encoder decode behavior.
     """
+    import base64
+    clean = "".join(c for c in s if c.isalnum() or c in "+/=")
+    if not clean:
+        return ""
+    pad = (4 - len(clean) % 4) % 4
+    try:
+        return base64.b64decode(clean + "=" * pad).decode("latin1")
+    except Exception:
+        pass
+
     b64_table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     ch_decode = {c: i for i, c in enumerate(b64_table)}
     s = "".join(c for c in s if c in ch_decode or c == '=')
@@ -146,23 +156,28 @@ def wheeler_decompress(data_str: str) -> bytes:
             buf_byte |= ((ch & 1) << (8 - remaining_bits))
             remaining_bits -= 1
             if remaining_bits == 0:
-                out.append(buf_byte & 0xFF)
-                lookup[prev] = buf_byte & 0xFF
-                prev = sling_hash(buf_byte & 0xFF, prev)
+                b = buf_byte & 0xFF
+                out.append(b)
+                lookup[prev] = b
+                prev = ((prev << 4) + b) & 4095
         else:
             if (ch & 1) > 0:
                 buf_byte = 0
                 remaining_bits = 8
             else:
-                buf_byte = lookup[prev]
-                out.append(buf_byte & 0xFF)
-                prev = sling_hash(buf_byte & 0xFF, prev)
+                b = lookup[prev]
+                out.append(b)
+                lookup[prev] = b
+                prev = ((prev << 4) + b) & 4095
                 
         ch >>= 1
         bits_read += 1
         countdown -= 1
 
     return bytes(out)
+
+
+_IMAGE_CACHE: dict = {}
 
 
 def decode_worksheet_image(raw_content: str) -> bytes:
@@ -173,12 +188,19 @@ def decode_worksheet_image(raw_content: str) -> bytes:
     cleaned = raw_content.strip().replace('\n', '').replace('\r', '').replace(' ', '')
     if not cleaned:
         return b""
+
+    # Cache lookup
+    cache_key = hash(cleaned)
+    if cache_key in _IMAGE_CACHE:
+        return _IMAGE_CACHE[cache_key]
     
     # Check if direct base64 PNG
     if cleaned.startswith("iVBORw0KGgo"):
         import base64
         try:
-            return base64.b64decode(cleaned)
+            res = base64.b64decode(cleaned)
+            _IMAGE_CACHE[cache_key] = res
+            return res
         except Exception:
             pass
 
@@ -186,6 +208,7 @@ def decode_worksheet_image(raw_content: str) -> bytes:
         decoded_chars = worksheet_base64_decode(cleaned)
         image_bytes = wheeler_decompress(decoded_chars)
         if image_bytes.startswith(b'\x89PNG') or image_bytes.startswith(b'\xff\xd8') or image_bytes.startswith(b'GIF8') or image_bytes.startswith(b'BM'):
+            _IMAGE_CACHE[cache_key] = image_bytes
             return image_bytes
     except Exception:
         pass
@@ -195,6 +218,7 @@ def decode_worksheet_image(raw_content: str) -> bytes:
         import base64
         direct = base64.b64decode(cleaned)
         if direct.startswith(b'\x89PNG') or direct.startswith(b'\xff\xd8') or direct.startswith(b'GIF8') or direct.startswith(b'BM'):
+            _IMAGE_CACHE[cache_key] = direct
             return direct
     except Exception:
         pass

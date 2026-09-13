@@ -6571,26 +6571,22 @@ class CellInputEdit(QTextEdit):
                 max_frac_h = max(f.height() for f in self.frac_widgets.values())
                 calc_h = max(calc_h, max_frac_h + 8)
 
-            # Embedded images height check
+            # Embedded images / table height check
             if hasattr(self, 'embedded_images') and self.embedded_images:
                 img_h_sum = 0
-                for ch_pos in range(self.document().characterCount() - 1):
-                    c = QTextCursor(self.document())
-                    c.setPosition(ch_pos)
-                    c.setPosition(ch_pos + 1, QTextCursor.MoveMode.KeepAnchor)
-                    if c.charFormat().isImageFormat():
-                        fh = c.charFormat().toImageFormat().height()
-                        if fh > 0:
-                            img_h_sum += int(fh)
+                b = self.document().begin()
+                while b.isValid():
+                    it = b.begin()
+                    while not it.atEnd():
+                        frag = it.fragment()
+                        if frag.isValid() and frag.charFormat().isImageFormat():
+                            img_h_sum += frag.charFormat().toImageFormat().height()
+                        it += 1
+                    b = b.next()
                 if img_h_sum > 0:
-                    calc_h = max(calc_h, img_h_sum + 16)
-                else:
-                    for img_id in self.embedded_images:
-                        res = self.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(img_id))
-                        if res and not res.isNull():
-                            img_h_sum += res.size().height()
-                    if img_h_sum > 0:
-                        calc_h = max(calc_h, img_h_sum + 16)
+                    calc_h = max(calc_h, int(img_h_sum) + 16)
+                if doc_h > 0:
+                    calc_h = max(calc_h, int(doc_h) + 12)
 
         new_h = max(line_height + 6, min(4000, calc_h))
         if self.height() != new_h:
@@ -13264,12 +13260,13 @@ class WorksheetCell(QFrame):
 
         # 2. Set input content
         inp_text = data.get('input', '')
+        self.is_table = bool(data.get('is_table', False) or '<table' in inp_text.lower())
         spans = data.get('spans')
         if spans:
             self.input_edit.set_spans(spans)
             if hasattr(self, 'output_row'):
                 self.output_row.setVisible(False)
-        elif embedded or '<img' in inp_text.lower() or '<span' in inp_text.lower() or '<div' in inp_text.lower():
+        elif embedded or self.is_table or '<img' in inp_text.lower() or '<span' in inp_text.lower() or '<div' in inp_text.lower() or '<table' in inp_text.lower():
             if '<img' in inp_text.lower():
                 import re
                 def _clamp_img_tag(m):

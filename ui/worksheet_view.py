@@ -821,11 +821,11 @@ class WorksheetView(QWidget):
             self.cells.append(cell)
             self.cells_layout.addWidget(cell)
 
-        self.active_cell = cell
-        self.activeCellChanged.emit(cell)
-        self.renumber_equation_labels()
-        self.cellCountChanged.emit(len(self.cells))
         if not getattr(self, '_is_loading', False):
+            self.active_cell = cell
+            self.activeCellChanged.emit(cell)
+            self.renumber_equation_labels()
+            self.cellCountChanged.emit(len(self.cells))
             self.update_section_hierarchy()
 
         if focus:
@@ -2054,6 +2054,8 @@ class WorksheetView(QWidget):
         finally:
             self._is_loading = False
 
+        self.renumber_equation_labels()
+        self.cellCountChanged.emit(len(self.cells))
         self.update_section_hierarchy()
 
         # Apply initial collapse states for collapsed sections
@@ -2136,6 +2138,8 @@ class WorksheetView(QWidget):
         finally:
             self._is_loading = False
 
+        self.renumber_equation_labels()
+        self.cellCountChanged.emit(len(self.cells))
         self.update_section_hierarchy()
 
         if progress_callback:

@@ -207,9 +207,133 @@ class WorksheetIO:
                 cells_data.append(cell)
                 exec_idx += 1
 
+        def _clean_octal_escapes(s: str) -> str:
+            def repl(m):
+                try:
+                    oct_bytes = bytes(int(x, 8) for x in re.findall(r'\\(\d{3})', m.group(0)))
+                    return oct_bytes.decode('utf-8', errors='replace')
+                except Exception:
+                    return m.group(0)
+            return re.sub(r'(?:\\\d{3})+', repl, s)
+
+        def process_table(table_elem: ET.Element, depth: int):
+            nonlocal exec_idx
+            cols = table_elem.findall('Table-Column')
+            weights = []
+            for c in cols:
+                try:
+                    weights.append(float(c.attrib.get('weight', '100')))
+                except (ValueError, TypeError):
+                    weights.append(100.0)
+            total_weight = sum(weights) or 1.0
+            col_pcts = [f"{int(round(w * 100.0 / total_weight))}%" for w in weights]
+
+            exterior = table_elem.attrib.get('exterior', 'all')
+            interior = table_elem.attrib.get('interior', 'group')
+            table_w_attr = table_elem.attrib.get('width', '100%').strip()
+            m_pct = re.match(r'^([\d\.]+)%', table_w_attr)
+            if m_pct:
+                val_pct = float(m_pct.group(1))
+                table_w = f"{min(100, int(val_pct))}%"
+            else:
+                table_w = "100%"
+
+            outer_border = "1px solid #b0b8c0" if exterior != 'none' else "none"
+            inner_border = "1px solid #d0d8e0" if interior in ('group', 'all') else "none"
+
+            table_embedded_images = {}
+            html_rows = []
+
+            for r_idx, row in enumerate(table_elem.findall('Table-Row')):
+                cells = row.findall('Table-Cell')
+                html_cells = []
+                for c_idx, cell in enumerate(cells):
+                    pct = col_pcts[c_idx] if c_idx < len(col_pcts) else ""
+                    rowspan = cell.attrib.get('rowspan', '1')
+                    colspan = cell.attrib.get('columnspan', '1')
+                    fill = cell.attrib.get('fillcolor', '')
+                    bg_col = "#ffffff"
+                    if fill:
+                        m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', fill)
+                        if m_rgb:
+                            r_c, g_c, b_c = [int(x) for x in m_rgb.groups()]
+                            bg_col = f"#{r_c:02x}{g_c:02x}{b_c:02x}"
+
+                    cell_pieces = []
+                    for tf in cell.iter('Text-field'):
+                        # 1. Images
+                        for img in tf.findall('.//Image'):
+                            raw_img_text = img.text or ""
+                            img_bytes = decode_worksheet_image(raw_img_text)
+                            if img_bytes:
+                                img_b64 = base64.b64encode(img_bytes).decode('ascii')
+                                img_id = f"img_{uuid.uuid4().hex[:8]}"
+                                table_embedded_images[img_id] = img_b64
+                                raw_w = int(img.attrib.get('width', '350'))
+                                raw_h = int(img.attrib.get('height', '250'))
+                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes, max_w=380)
+                                cell_pieces.append(f'<div style="text-align: center; margin: 4px 0;"><img src="{img_id}" width="{img_w}" height="{img_h}"/></div>')
+
+                        # 2. Equations
+                        for eq in tf.findall('.//Equation'):
+                            m_str, l_str = get_equation_math(eq)
+                            if m_str and m_str != 'JSFH' and not cls._is_base64_mprintslash(m_str):
+                                clean_m = cls._clean_math_symbols(m_str)
+                                clean_m = clean_m.replace('&#961;', 'ρ').replace('&rho;', 'ρ').replace('&leq;', '≤').replace('&geq;', '≥').replace('&mid;', '|')
+                                frac = cls._parse_fraction(clean_m)
+                                if frac:
+                                    clean_m = f"{frac[0]}/{frac[1]}"
+                                cell_pieces.append(f'<div style="color: #000088; font-family: \'Times New Roman\', serif; font-size: 13pt; font-style: italic; margin: 3px 0;">{clean_m}</div>')
+
+                        # 3. Formatted text
+                        tf_clean = cls._extract_tf_text(tf)
+                        if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not tf.findall('.//Image'):
+                            tf_clean = _clean_octal_escapes(tf_clean)
+                            tf_clean = tf_clean.replace('\n', '<br/>')
+                            cell_pieces.append(f'<div style="margin: 2px 0;">{tf_clean}</div>')
+
+                    content = "".join(cell_pieces).strip() or "&nbsp;"
+                    style_items = [
+                        f"border: {inner_border};",
+                        "padding: 6px 10px;",
+                        "vertical-align: middle;",
+                        f"background-color: {bg_col};",
+                    ]
+                    if pct:
+                        style_items.append(f"width: {pct};")
+                    style_str = " ".join(style_items)
+                    rs_attr = f' rowspan="{rowspan}"' if rowspan != '1' else ''
+                    cs_attr = f' colspan="{colspan}"' if colspan != '1' else ''
+                    html_cells.append(f'<td{rs_attr}{cs_attr} style="{style_str}">{content}</td>')
+
+                html_rows.append('<tr>' + "".join(html_cells) + '</tr>')
+
+            table_style = (
+                f"border-collapse: collapse; width: {table_w}; border: {outer_border}; "
+                "margin: 8px 0; font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.3;"
+            )
+            table_html = f'<table style="{table_style}"><tbody>{"".join(html_rows)}</tbody></table>'
+
+            cell = {
+                'cell_id': str(uuid.uuid4())[:8],
+                'execution_idx': exec_idx,
+                'input': table_html,
+                'input_mode': cls.MODE_TEXT,
+                'is_table': True,
+                'is_worksheet_mode': not is_presentation,
+                'embedded_images': table_embedded_images,
+                'section_level': depth,
+            }
+            cells_data.append(cell)
+            exec_idx += 1
+
         def process_element(elem: ET.Element, depth: int = 0):
             nonlocal exec_idx
             tag = elem.tag
+
+            if tag == 'Table':
+                process_table(elem, depth)
+                return
 
             if tag == 'Text-field':
                 process_text_field(elem, depth)
@@ -465,7 +589,7 @@ class WorksheetIO:
                     process_element(child, depth)
 
         for child in root:
-            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input', 'Text-field'):
+            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input', 'Text-field', 'Table'):
                 process_element(child, 0)
 
         return cells_data
@@ -674,12 +798,63 @@ class WorksheetIO:
                 continue
 
             parent = active_sections[-1] if active_sections else root
-            group = ET.SubElement(parent, "Group")
-            group.attrib["labelreference"] = f"L{idx}"
-
             inp_mode = cell.get("input_mode", cls.MODE_2D_MATH)
             input_text = cell.get("input", "").strip()
             embedded_imgs = cell.get("embedded_images", {})
+            is_table = cell.get("is_table", False) or "<table" in input_text.lower()
+
+            if is_table:
+                tbl = ET.SubElement(parent, "Table")
+                tbl.attrib["visible"] = "true"
+                tbl.attrib["exterior"] = "all"
+                tbl.attrib["interior"] = "group"
+                tbl.attrib["width"] = "100%"
+                row_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', input_text, flags=re.DOTALL | re.IGNORECASE)
+                first_row = True
+                for row_html in row_matches:
+                    cells_in_row = re.findall(r'<td[^>]*>(.*?)</td>', row_html, flags=re.DOTALL | re.IGNORECASE)
+                    if first_row:
+                        for _ in cells_in_row:
+                            col_elem = ET.SubElement(tbl, "Table-Column")
+                            col_elem.attrib["weight"] = "100"
+                            col_elem.attrib["separator"] = "true"
+                        first_row = False
+                    row_elem = ET.SubElement(tbl, "Table-Row")
+                    row_elem.attrib["align"] = "top"
+                    row_elem.attrib["separator"] = "true"
+                    for cell_html in cells_in_row:
+                        c_elem = ET.SubElement(row_elem, "Table-Cell")
+                        c_elem.attrib["padding"] = "5"
+                        c_elem.attrib["visible"] = "true"
+                        pb = ET.SubElement(c_elem, "Presentation-Block")
+                        grp = ET.SubElement(pb, "Group")
+                        grp.attrib["view"] = "presentation"
+                        grp_inp = ET.SubElement(grp, "Input")
+                        tf = ET.SubElement(grp_inp, "Text-field")
+                        tf.attrib["style"] = "Text"
+                        tf.attrib["layout"] = "Normal"
+
+                        img_srcs = re.findall(r'src=["\']([^"\']+)["\']', cell_html)
+                        for src in img_srcs:
+                            if src in embedded_imgs:
+                                b64_d = embedded_imgs[src]
+                                w, h = cls._get_save_image_dimensions(b64_d, cell_html, src)
+                                im_node = ET.SubElement(tf, "Image")
+                                im_node.attrib["width"] = str(w)
+                                im_node.attrib["height"] = str(h)
+                                im_node.text = b64_d
+
+                        clean = re.sub(r'<img[^>]*>', '', cell_html, flags=re.IGNORECASE)
+                        clean = re.sub(r'<br\s*/?>', '\n', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'<div[^>]*>', '', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'</div>', '\n', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'<[^>]+>', '', clean).strip()
+                        if clean and clean != '&nbsp;':
+                            tf.text = clean
+                continue
+
+            group = ET.SubElement(parent, "Group")
+            group.attrib["labelreference"] = f"L{idx}"
 
             inp = ET.SubElement(group, "Input")
 

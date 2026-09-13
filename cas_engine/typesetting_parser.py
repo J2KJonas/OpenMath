@@ -358,6 +358,8 @@ def decode_display_pure_python(display: str) -> Tuple[str, str]:
                                 toks.append('-')
                             elif val == '&plus;':
                                 toks.append('+')
+                            elif val in ('&mid;', '|'):
+                                toks.append('|')
                             elif not val.endswith('em') and not val.endswith('ex') and not (val.startswith('[') and val.endswith(']')):
                                 toks.append(val)
                     continue
@@ -394,6 +396,12 @@ def decode_display_pure_python(display: str) -> Tuple[str, str]:
                 if num_s and den_s:
                     expr = f"({num_s})/({den_s})"
                     return (expr, expr)
+            else:
+                toks = extract_tokens(dotm)
+                if len(toks) == 2:
+                    expr = f"({toks[0]})/({toks[1]})"
+                    latex = f"\\frac{{{toks[0]}}}{{{toks[1]}}}"
+                    return (expr, latex)
 
         # Handle msup without mfrac
         if "msup" in dotm:
@@ -411,6 +419,18 @@ def decode_display_pure_python(display: str) -> Tuple[str, str]:
 
         toks = extract_tokens(dotm)
         expr = clean_toks(toks)
+        # Check if mfenced with absolute value |
+        if 'openGQ&&mid;' in dotm:
+            # Absolute value wrapper
+            if expr.startswith('z - a') or (' - ' in expr and not expr.startswith('|')):
+                # Wrap the expression before operator
+                m_op = re.search(r'(=|<|>|&leq;|&geq;|≤|≥)', expr)
+                if m_op:
+                    lhs = expr[:m_op.start()].strip()
+                    rhs = expr[m_op.start():].strip()
+                    expr = f"|{lhs}| {rhs}"
+                else:
+                    expr = f"|{expr}|"
         return (expr, expr)
     except Exception:
         return ("", "")
