@@ -90,19 +90,47 @@ git clone https://github.com/J2KJonas/calculator.git
 cd calculator
 ```
 
-### 2. Install Required Dependencies
-```bash
-pip install -r requirements.txt
-```
-*(Or directly: `pip install PyQt6 sympy matplotlib numpy`)*
+### 2. Run the Application
 
-> [!TIP]
-> **Linux users**: If running on a minimal Linux desktop or server, install system Qt libraries if not present:
-> - Ubuntu/Debian: `sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libgl1`
-> - Arch Linux: `sudo pacman -S libxcb xcb-util-cursor libxkbcommon`
-> - Fedora: `sudo dnf install libxcb-cursor libxkbcommon-x11`
+#### Linux (Zorin OS, Ubuntu, Debian, Fedora, Arch):
 
-### 3. Run the Application
+1. **Install system prerequisites** (if not already installed):
+   - **Zorin OS / Ubuntu / Debian**:
+     ```bash
+     sudo apt update
+     sudo apt install -y python3 python3-venv python3-pip libxcb-cursor0 libxkbcommon-x11-0 libgl1 libegl1
+     ```
+   - **Fedora**:
+     ```bash
+     sudo dnf install -y python3 python3-pip libxcb-cursor libxkbcommon-x11
+     ```
+   - **Arch Linux**:
+     ```bash
+     sudo pacman -S python python-pip libxcb xcb-util-cursor libxkbcommon
+     ```
+
+2. **Launch with the universal script** (automatically sets up `.venv` and installs dependencies):
+   ```bash
+   chmod +x run.sh
+   ./run.sh
+   ```
+
+   > [!NOTE]
+   > **PEP 668 on Zorin OS / Ubuntu 24.04+**: Modern Linux distributions prevent running `pip install` on the system Python. `./run.sh` automatically creates and uses an isolated `.venv` virtual environment for you.
+   > If you prefer to manually manage your virtual environment:
+   > ```bash
+   > python3 -m venv .venv
+   > source .venv/bin/activate
+   > pip install -r requirements.txt
+   > python3 main.py
+   > ```
+
+3. *(Optional)* **Add OpenMath to your Application Menu and Desktop**:
+   ```bash
+   chmod +x create_shortcut_linux.sh
+   ./create_shortcut_linux.sh
+   ```
+   On Zorin OS / GNOME desktops, this adds OpenMath directly to your Start / Applications menu and places a trusted launcher on your Desktop.
 
 #### Windows:
 - Double-click **`run.bat`** (or run `python main.py` / `py -3 main.py` in Command Prompt / PowerShell)
@@ -111,6 +139,7 @@ pip install -r requirements.txt
 #### macOS (Apple Silicon M1/M2/M3/M4 & Intel):
 - Run in terminal:
   ```bash
+  chmod +x run.sh
   ./run.sh
   ```
   *(or `python3 main.py`)*
@@ -118,18 +147,6 @@ pip install -r requirements.txt
   ```bash
   chmod +x create_shortcut.sh
   ./create_shortcut.sh
-  ```
-
-#### Linux:
-- Run in terminal:
-  ```bash
-  ./run.sh
-  ```
-  *(or `python3 main.py`)*
-- *(Optional)* Install to Application Launcher and Desktop:
-  ```bash
-  chmod +x create_shortcut_linux.sh
-  ./create_shortcut_linux.sh
   ```
 
 ---
@@ -217,9 +234,18 @@ All 68 unit and UI tests run in headless-compatible mode and cleanly terminate a
 ### `NameError: name 'Optional' is not defined`
 If you encounter this error when launching on Windows, macOS, or Linux, ensure you are using the latest version of the repository. The typing annotation in `ui/worksheet_cell.py` imports `Optional` from the standard library `typing` module, compatible with Python 3.10 through 3.14+.
 
+### `error: externally-managed-environment` (PEP 668)
+If you see this error when installing via `pip` on Zorin OS, Ubuntu 23.04+, or Debian 12+, use `./run.sh`, which automatically provisions a virtual environment in `.venv`.
+Alternatively, create and activate a virtual environment manually:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ### Linux: `qt.qpa.plugin: Could not load the Qt platform plugin "xcb"`
 If you run on a headless or minimal Linux desktop, install the missing Qt XCB/Wayland dependencies:
-- **Ubuntu/Debian**:
+- **Zorin OS / Ubuntu / Debian**:
   ```bash
   sudo apt install -y libxcb-cursor0 libxkbcommon-x11-0 libgl1 libegl1
   ```
@@ -231,6 +257,12 @@ If you run on a headless or minimal Linux desktop, install the missing Qt XCB/Wa
   ```bash
   sudo pacman -S libxcb xcb-util-cursor libxkbcommon
   ```
+
+### Wayland vs X11 Display Issues (Zorin OS / Ubuntu)
+Zorin OS uses Wayland by default. If your graphics driver or desktop environment causes visual glitches under Wayland, you can force Qt to use the X11 / XWayland backend:
+```bash
+QT_QPA_PLATFORM=xcb ./run.sh
+```
 
 ### macOS Apple Silicon (M1 / M2 / M3 / M4) Architecture
 `run.sh` and `create_shortcut.sh` automatically detect Apple Silicon architecture (`arm64`) and ensure that your native Homebrew Python (`/opt/homebrew/bin/python3`) or local virtual environment is executed natively without emulation overhead:
