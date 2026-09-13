@@ -5722,14 +5722,20 @@ class CellInputEdit(QTextEdit):
         fmt = QTextImageFormat()
         fmt.setName(img_id)
 
+        # Screenshots on macOS and modern HiDPI/Retina displays contain 2x physical pixels
+        # per logical point, causing them to appear twice as large when pasted at 1:1 pixel mapping.
+        # Defaulting initial display size to 50% restores exact 1:1 visual match with the captured area.
+        disp_w = max(30, int(round(qimg.width() * 0.5)))
+        disp_h = max(20, int(round(qimg.height() * 0.5)))
+
         target_max_w = max_width or max(700, self.viewport().width() - 40)
-        if qimg.width() > target_max_w:
-            scaled_h = max(20, int(qimg.height() * (target_max_w / qimg.width())))
+        if disp_w > target_max_w:
+            scaled_h = max(20, int(round(disp_h * (target_max_w / disp_w))))
             fmt.setWidth(target_max_w)
             fmt.setHeight(scaled_h)
         else:
-            fmt.setWidth(qimg.width())
-            fmt.setHeight(qimg.height())
+            fmt.setWidth(disp_w)
+            fmt.setHeight(disp_h)
 
         cursor.insertImage(fmt)
         self._adjust_height()

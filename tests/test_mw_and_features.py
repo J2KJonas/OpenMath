@@ -195,7 +195,7 @@ class TestWorksheetFeatures(unittest.TestCase):
         self.assertEqual(res.size().height(), 80)
 
     def test_embedded_image_height_adjustment(self):
-        from PyQt6.QtGui import QImage, QColor
+        from PyQt6.QtGui import QImage, QColor, QTextCursor
         from PyQt6.QtCore import QMimeData
         from ui.worksheet_cell import WorksheetCell
 
@@ -208,7 +208,14 @@ class TestWorksheetFeatures(unittest.TestCase):
         cell.input_edit.insertFromMimeData(mime)
         cell.input_edit._adjust_height()
 
-        self.assertGreaterEqual(cell.input_edit.height(), 220)
+        # Display size is 50% of Retina physical pixels (150x110)
+        c = QTextCursor(cell.input_edit.document())
+        c.setPosition(0)
+        c.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        fmt = c.charFormat().toImageFormat()
+        self.assertEqual(fmt.width(), 150)
+        self.assertEqual(fmt.height(), 110)
+        self.assertGreaterEqual(cell.input_edit.height(), 110)
 
     def test_copy_paste_image_in_document(self):
         from PyQt6.QtGui import QImage, QColor, QTextCursor, QKeyEvent
