@@ -7,13 +7,51 @@ Implements the decompression algorithm used by .mw documents to store embedded i
 from typing import Optional
 
 
+import os
+import re
+import ctypes
+import subprocess
+
+_B64_CLEAN_RE = re.compile(r'[^A-Za-z0-9+/=]')
+
+_C_LIB = None
+
+def _get_c_wheeler_lib():
+    global _C_LIB
+    if _C_LIB is not None:
+        return _C_LIB
+    dylib_path = os.path.join(os.path.dirname(__file__), "_wheeler.dylib")
+    c_source = os.path.join(os.path.dirname(__file__), "wheeler.c")
+    if not os.path.exists(dylib_path) and os.path.exists(c_source):
+        try:
+            subprocess.run(["clang", "-O3", "-dynamiclib", "-o", dylib_path, c_source],
+                           capture_output=True, timeout=5)
+        except Exception:
+            pass
+    if os.path.exists(dylib_path):
+        try:
+            lib = ctypes.CDLL(dylib_path)
+            lib.wheeler_decompress_c.argtypes = [
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte))
+            ]
+            lib.wheeler_decompress_c.restype = ctypes.c_int
+            lib.free_wheeler_buf.argtypes = [ctypes.POINTER(ctypes.c_ubyte)]
+            _C_LIB = lib
+            return _C_LIB
+        except Exception:
+            pass
+    return None
+
+
 def worksheet_base64_decode(s: str) -> str:
     """
     Decodes standard Base64 string into 8-bit character stream
     matching the worksheet Base64Encoder decode behavior.
     """
     import base64
-    clean = "".join(c for c in s if c.isalnum() or c in "+/=")
+    clean = _B64_CLEAN_RE.sub('', s)
     if not clean:
         return ""
     pad = (4 - len(clean) % 4) % 4
@@ -127,6 +165,19 @@ def wheeler_decompress(data_str: str) -> bytes:
     Decompresses character stream using the Wheeler algorithm.
     Produces the raw binary payload (typically PNG/JPEG image).
     """
+    clib = _get_c_wheeler_lib()
+    if clib is not None:
+        try:
+            data_bytes = data_str.strip().encode('latin1')
+            out_ptr = ctypes.POINTER(ctypes.c_ubyte)()
+            c_len = clib.wheeler_decompress_c(data_bytes, len(data_bytes), ctypes.byref(out_ptr))
+            if c_len > 0 and out_ptr:
+                res = bytes(ctypes.string_at(out_ptr, c_len))
+                clib.free_wheeler_buf(out_ptr)
+                return res
+        except Exception:
+            pass
+
     instream = WheelerInStream(data_str)
     lookup = [0] * 4096
     prev = 0

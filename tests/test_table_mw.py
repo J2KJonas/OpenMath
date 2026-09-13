@@ -4,8 +4,11 @@ Unit tests for Table parsing, rendering, and serialization in .mw files.
 
 import unittest
 from PyQt6.QtWidgets import QApplication
-from cas_engine import WorksheetIO
+from PyQt6.QtCore import Qt, QPoint, QPointF, QRectF
+from PyQt6.QtGui import QMouseEvent, QTextTable, QTextLength
+from cas_engine import CASEngine, WorksheetIO
 from ui.worksheet_cell import WorksheetCell
+from ui.worksheet_view import WorksheetView
 
 
 class TestTableLoadingAndRendering(unittest.TestCase):
@@ -120,5 +123,217 @@ class TestTableLoadingAndRendering(unittest.TestCase):
         self.assertIn('<Layout name="Normal"', mw_xml)
 
 
+class TestTableInteractionAndResizing(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.cell = WorksheetCell(execution_idx=1)
+        self.cell.resize(600, 400)
+        table_html = (
+            '<table border="1" cellpadding="4" style="width: 300px;">'
+            '<tr><td>Col 1</td><td>Col 2</td><td>Col 3</td></tr>'
+            '<tr><td>Val 1</td><td>Val 2</td><td>Val 3</td></tr>'
+            '</table>'
+        )
+        self.cell.from_dict({'input': table_html, 'input_mode': 2, 'is_table': True})
+        self.cell.show()
+        self.app.processEvents()
+
+    def test_find_all_tables_and_geometry(self):
+        edit = self.cell.input_edit
+        tables = edit._find_all_tables()
+        self.assertEqual(len(tables), 1)
+        tbl = tables[0]
+        self.assertEqual(tbl.columns(), 3)
+        self.assertEqual(tbl.rows(), 2)
+
+        geo = edit._get_table_geometry(tbl)
+        self.assertGreater(geo.width(), 0)
+        self.assertGreater(geo.height(), 0)
+
+        widths = edit._get_table_col_widths(tbl)
+        self.assertEqual(len(widths), 3)
+        for w in widths:
+            self.assertGreater(w, 0)
+
+        dividers = edit._get_table_col_divider_xs(tbl)
+        self.assertEqual(len(dividers), 2)  # 2 vertical dividers for 3 columns
+
+    def test_column_divider_drag_resizing(self):
+        edit = self.cell.input_edit
+        tables = edit._find_all_tables()
+        tbl = tables[0]
+
+        # Simulate dragging the column divider between column 0 and column 1
+        edit._active_table = tbl
+        edit._resizing_table_col = True
+        edit._table_resize_col_idx = 0
+        edit._table_orig_col_widths = [80.0, 80.0, 80.0]
+        edit._table_drag_start_mouse = QPoint(100, 50)
+
+        move_ev = QMouseEvent(
+            QMouseEvent.Type.MouseMove,
+            QPointF(130, 50),
+            QPointF(130, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        edit.mouseMoveEvent(move_ev)
+
+        # Check that column 0 grew and column 1 shrank
+        constraints = tbl.format().columnWidthConstraints()
+        self.assertEqual(len(constraints), 3)
+        self.assertAlmostEqual(constraints[0].rawValue(), 110.0, delta=1.0)
+        self.assertAlmostEqual(constraints[1].rawValue(), 50.0, delta=1.0)
+        self.assertAlmostEqual(constraints[2].rawValue(), 80.0, delta=1.0)
+
+        # Release mouse
+        rel_ev = QMouseEvent(
+            QMouseEvent.Type.MouseButtonRelease,
+            QPointF(130, 50),
+            QPointF(130, 50),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        edit.mouseReleaseEvent(rel_ev)
+        self.assertFalse(edit._resizing_table_col)
+
+    def test_table_right_border_width_resizing(self):
+        edit = self.cell.input_edit
+        tables = edit._find_all_tables()
+        tbl = tables[0]
+
+        edit._active_table = tbl
+        edit._resizing_table_size = True
+        edit._table_resize_hit = 'right_border'
+        edit._table_orig_col_widths = [60.0, 60.0, 60.0]
+        edit._table_orig_rect = QRectF(20, 20, 180, 80)
+        edit._table_orig_cell_padding = 4.0
+        edit._table_drag_start_mouse = QPoint(200, 40)
+
+        # Drag 60px to the right
+        move_ev = QMouseEvent(
+            QMouseEvent.Type.MouseMove,
+            QPointF(260, 40),
+            QPointF(260, 40),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        edit.mouseMoveEvent(move_ev)
+
+        fmt = tbl.format()
+        self.assertAlmostEqual(fmt.width().rawValue(), 240.0, delta=1.0)
+        constraints = fmt.columnWidthConstraints()
+        self.assertEqual(len(constraints), 3)
+        for c in constraints:
+            self.assertAlmostEqual(c.rawValue(), 80.0, delta=1.0)
+
+    def test_table_bottom_border_padding_resizing(self):
+        edit = self.cell.input_edit
+        tables = edit._find_all_tables()
+        tbl = tables[0]
+
+        edit._active_table = tbl
+        edit._resizing_table_size = True
+        edit._table_resize_hit = 'bottom_border'
+        edit._table_orig_col_widths = [60.0, 60.0, 60.0]
+        edit._table_orig_rect = QRectF(20, 20, 180, 80)
+        edit._table_orig_cell_padding = 4.0
+        edit._table_drag_start_mouse = QPoint(100, 100)
+
+        # Drag 20px down
+        move_ev = QMouseEvent(
+            QMouseEvent.Type.MouseMove,
+            QPointF(100, 120),
+            QPointF(100, 120),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier
+        )
+        edit.mouseMoveEvent(move_ev)
+
+        fmt = tbl.format()
+        self.assertGreater(fmt.cellPadding(), 4.0)
+
+    def test_table_row_and_column_structural_operations(self):
+        edit = self.cell.input_edit
+        tables = edit._find_all_tables()
+        tbl = tables[0]
+
+        initial_rows = tbl.rows()
+        initial_cols = tbl.columns()
+
+        tbl.insertRows(1, 1)
+        self.assertEqual(tbl.rows(), initial_rows + 1)
+
+        tbl.insertColumns(1, 1)
+        self.assertEqual(tbl.columns(), initial_cols + 1)
+
+        tbl.removeRows(1, 1)
+        self.assertEqual(tbl.rows(), initial_rows)
+
+        tbl.removeColumns(1, 1)
+        self.assertEqual(tbl.columns(), initial_cols)
+
+
+class TestLazyCellHydration(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_lazy_cell_transparent_hydration_on_expand(self):
+        engine = CASEngine()
+        ws = WorksheetView(engine=engine)
+        ws.resize(800, 600)
+
+        # Create a collapsed section header followed by a child cell
+        sample_data = [
+            {
+                'input': 'Section Title',
+                'is_section_header': True,
+                'section_level': 0,
+                'is_collapsed': True,
+                'execution_idx': 1
+            },
+            {
+                'input': 'x := 42;',
+                'input_mode': 1,
+                'section_level': 0,
+                'is_section_header': False,
+                'execution_idx': 2
+            }
+        ]
+
+        # Load into worksheet via JSON
+        import json
+        ws.load_from_json(json.dumps({'cells': sample_data}))
+        ws.show()
+        self.app.processEvents()
+
+        self.assertEqual(len(ws.cells), 2)
+        sec_header = ws.cells[0]
+        child_cell = ws.cells[1]
+
+        # Verify child cell was instantiated as lazy and hidden
+        self.assertTrue(child_cell._is_lazy)
+        self.assertTrue(child_cell.isHidden())
+
+        # Uncollapse the section
+        sec_header.is_collapsed = False
+        ws._on_section_toggled(sec_header.cell_id, False)
+        self.app.processEvents()
+
+        # Verify child cell automatically hydrated and became visible
+        self.assertFalse(child_cell._is_lazy)
+        self.assertFalse(child_cell.isHidden())
+        self.assertIn('x := 42;', child_cell.get_input_text())
+
+
 if __name__ == '__main__':
     unittest.main()
+

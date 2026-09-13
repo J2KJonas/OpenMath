@@ -26,7 +26,7 @@ from PyQt6.QtGui import (
     QFont, QFontMetrics, QColor, QKeyEvent, QPainter, QPainterPath, QPen,
     QTextCursor, QWheelEvent, QTextCharFormat, QTextBlockFormat, QTextFormat, QTextImageFormat,
     QTextDocument, QPixmap, QImage, QSyntaxHighlighter, QPolygonF, QKeySequence, QBrush, QPalette,
-    QTextOption
+    QTextOption, QTextTable, QTextLength
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QRectF, QSize, QTimer, QStringListModel, QEvent, QUrl, QPoint, QPointF, QBuffer, QIODevice, QMimeData
 try:
@@ -5375,12 +5375,8 @@ class CellInputEdit(QTextEdit):
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setStyleSheet("background: transparent; border: none; padding: 0px; selection-background-color: #2563eb; selection-color: #ffffff;")
 
-        # Autocompleter
-        self.completer = QCompleter(MATH_COMPLETIONS, self)
-        self.completer.setWidget(self)
-        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self.completer.activated.connect(self._insert_completion)
+        # Autocompleter (lazy loaded on demand)
+        self._completer = None
 
         self.document().contentsChanged.connect(self._adjust_height)
         self.document().contentsChanged.connect(self._reposition_fractions)
@@ -5414,9 +5410,40 @@ class CellInputEdit(QTextEdit):
         self._resize_start_h = 100.0
         self._resize_ratio = 1.0
 
+        # Table selection, hover, dragging & interactive resizing state
+        self._hovered_table = None
+        self._hovered_table_hit = None
+        self._hovered_col_idx = None
+        self._selected_table = None
+        self._resizing_table_col = False
+        self._resizing_table_size = False
+        self._resizing_table_corner = False
+        self._dragging_table_move = False
+        self._table_drag_start_mouse = None
+        self._table_resize_hit = None
+        self._table_resize_col_idx = None
+        self._table_orig_col_widths = []
+        self._table_orig_rect = None
+        self._table_orig_cell_padding = 4.0
+        self._active_table = None
+
         init_fmt = self._get_char_format_for_mode(self.current_typing_mode)
         self.setCurrentCharFormat(init_fmt)
         self.math_highlighter = Math2DHighlighter(self)
+
+    @property
+    def completer(self):
+        if self._completer is None:
+            self._completer = QCompleter(MATH_COMPLETIONS, self)
+            self._completer.setWidget(self)
+            self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            self._completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+            self._completer.activated.connect(self._insert_completion)
+        return self._completer
+
+    @completer.setter
+    def completer(self, val):
+        self._completer = val
 
     def set_editable(self, editable: bool):
         self.setReadOnly(not editable)
@@ -6593,6 +6620,9 @@ class CellInputEdit(QTextEdit):
             self.setFixedHeight(new_h)
             self.updateGeometry()
             if self.parent_cell:
+                ws = self.parent_cell._get_worksheet_view()
+                if ws and getattr(ws, '_is_loading', False):
+                    return
                 if hasattr(self.parent_cell, 'input_row'):
                     self.parent_cell.input_row.updateGeometry()
                 if hasattr(self.parent_cell, 'content_container'):
@@ -6602,9 +6632,6 @@ class CellInputEdit(QTextEdit):
                 if self.parent_cell.layout():
                     self.parent_cell.layout().invalidate()
                 self.parent_cell.updateGeometry()
-                ws = self.parent_cell._get_worksheet_view()
-                if ws and hasattr(ws, 'cells_layout'):
-                    ws.cells_layout.activate()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -7815,6 +7842,7 @@ class CellInputEdit(QTextEdit):
         self._reposition_fractions()
         self._draw_tall_parentheses()
         self._draw_image_resize_handles()
+        self._draw_table_handles_and_overlays()
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
@@ -9491,6 +9519,49 @@ class CellInputEdit(QTextEdit):
                         self.setTextCursor(c_test)
                         break
 
+        # Check if right-click is on a table; if so, add Table operations menu
+        cur_tbl = cursor.currentTable()
+        if cur_tbl is not None:
+            tbl_cell = cur_tbl.cellAt(cursor)
+            tbl_menu = menu.addMenu("Table")
+            act_ins_row_ab = tbl_menu.addAction("Insert Row Above")
+            act_ins_row_bl = tbl_menu.addAction("Insert Row Below")
+            act_ins_col_lf = tbl_menu.addAction("Insert Column Left")
+            act_ins_col_rt = tbl_menu.addAction("Insert Column Right")
+            tbl_menu.addSeparator()
+            act_del_row = tbl_menu.addAction("Delete Row")
+            act_del_col = tbl_menu.addAction("Delete Column")
+            tbl_menu.addSeparator()
+            act_dist_cols = tbl_menu.addAction("Distribute Columns Evenly")
+
+            if tbl_cell and tbl_cell.isValid():
+                r = tbl_cell.row()
+                c = tbl_cell.column()
+                act_ins_row_ab.triggered.connect(lambda: cur_tbl.insertRows(r, 1))
+                act_ins_row_bl.triggered.connect(lambda: cur_tbl.insertRows(r + 1, 1))
+                act_ins_col_lf.triggered.connect(lambda: cur_tbl.insertColumns(c, 1))
+                act_ins_col_rt.triggered.connect(lambda: cur_tbl.insertColumns(c + 1, 1))
+                act_del_row.triggered.connect(lambda: cur_tbl.removeRows(r, 1))
+                act_del_col.triggered.connect(lambda: cur_tbl.removeColumns(c, 1))
+            else:
+                act_del_row.setEnabled(False)
+                act_del_col.setEnabled(False)
+
+            def _dist_cols():
+                cnt = cur_tbl.columns()
+                if cnt > 0:
+                    tw = cur_tbl.format().width().rawValue()
+                    if tw <= 0:
+                        tw = max(100.0, float(self.viewport().width() - 40.0))
+                    col_w = max(25.0, float(tw / cnt))
+                    fmt = cur_tbl.format()
+                    fmt.setColumnWidthConstraints([QTextLength(QTextLength.Type.FixedLength, col_w)] * cnt)
+                    cur_tbl.setFormat(fmt)
+                    self._adjust_height()
+                    self.viewport().update()
+            act_dist_cols.triggered.connect(_dist_cols)
+            menu.addSeparator()
+
         # Standard editing actions matching clean style
         act_undo = menu.addAction("Undo")
         act_undo.setEnabled(self.document().isUndoAvailable())
@@ -9715,10 +9786,210 @@ class CellInputEdit(QTextEdit):
 
         p.end()
 
+    def _find_all_tables(self):
+        """Recursively retrieve all QTextTable frames in document."""
+        tables = []
+        def _scan(frame):
+            if frame is None:
+                return
+            for ch in frame.childFrames():
+                if isinstance(ch, QTextTable):
+                    tables.append(ch)
+                _scan(ch)
+        root = self.document().rootFrame()
+        if root:
+            _scan(root)
+        return tables
+
+    def _get_table_geometry(self, table: QTextTable) -> QRectF:
+        """Get viewport bounding rectangle for a QTextTable."""
+        doc_rect = self.document().documentLayout().frameBoundingRect(table)
+        vx = doc_rect.x() - self.horizontalScrollBar().value()
+        vy = doc_rect.y() - self.verticalScrollBar().value()
+        return QRectF(vx, vy, doc_rect.width(), doc_rect.height())
+
+    def _get_table_col_divider_xs(self, table: QTextTable):
+        """Return list of (col_idx, divider_x_in_viewport) for vertical dividers."""
+        dividers = []
+        cols = table.columns()
+        if cols <= 1:
+            return dividers
+        for c in range(1, cols):
+            try:
+                cell = table.cellAt(0, c)
+                r = self.cursorRect(cell.firstCursorPosition())
+                dividers.append((c - 1, float(r.left() - 4)))
+            except Exception:
+                pass
+        return dividers
+
+    def _get_table_col_widths(self, table: QTextTable):
+        """Calculate current pixel widths for all columns of the table."""
+        cols = table.columns()
+        t_rect = self._get_table_geometry(table)
+        xs = []
+        for c in range(cols):
+            try:
+                cell = table.cellAt(0, c)
+                r = self.cursorRect(cell.firstCursorPosition())
+                xs.append(float(r.left()))
+            except Exception:
+                xs.append(float(t_rect.left() + c * (t_rect.width() / max(1, cols))))
+        widths = []
+        for c in range(cols - 1):
+            widths.append(max(20.0, float(xs[c + 1] - xs[c])))
+        last_w = max(20.0, float(t_rect.right() - xs[-1] - 4))
+        widths.append(last_w)
+        return widths
+
+    def _hit_test_table(self, pos: QPoint):
+        """Hit test cursor position against tables, dividers, borders, and drag handles."""
+        tables = self._find_all_tables()
+        if not tables:
+            return None, None, None
+
+        margin = 6.0
+        for tbl in tables:
+            t_rect = self._get_table_geometry(tbl)
+            expanded = t_rect.adjusted(-margin - 4, -margin - 16, margin + 4, margin + 4)
+            if not expanded.contains(QPointF(pos)):
+                continue
+
+            x = float(pos.x())
+            y = float(pos.y())
+
+            # 1. Corner resize (bottom-right)
+            br_rect = QRectF(t_rect.right() - margin, t_rect.bottom() - margin, margin * 2.5, margin * 2.5)
+            if br_rect.contains(QPointF(pos)):
+                return tbl, 'bottom_right_corner', None
+
+            # 2. Vertical column dividers (inside the grid)
+            dividers = self._get_table_col_divider_xs(tbl)
+            if t_rect.top() - 2 <= y <= t_rect.bottom() + 2:
+                for col_idx, div_x in dividers:
+                    if abs(x - div_x) <= margin:
+                        return tbl, 'col_divider', col_idx
+
+            # 3. Right border (overall table width resize)
+            if t_rect.top() <= y <= t_rect.bottom() and abs(x - t_rect.right()) <= margin:
+                return tbl, 'right_border', None
+
+            # 4. Bottom border (table row height / padding resize)
+            if t_rect.left() <= x <= t_rect.right() and abs(y - t_rect.bottom()) <= margin:
+                return tbl, 'bottom_border', None
+
+            # 5. Table move handle / top or left border (drag table to move grid around)
+            handle_rect = QRectF(t_rect.left() - 4, t_rect.top() - 16, 28, 16)
+            if handle_rect.contains(QPointF(pos)) or (t_rect.left() <= x <= t_rect.right() and abs(y - t_rect.top()) <= margin) or (t_rect.top() <= y <= t_rect.bottom() and abs(x - t_rect.left()) <= margin):
+                return tbl, 'table_move_handle', None
+
+            # Inside table body
+            if t_rect.contains(QPointF(pos)):
+                return tbl, 'inside_table', None
+
+        return None, None, None
+
+    def _draw_table_handles_and_overlays(self):
+        """Draw interactive table outline, drag pill handle, column guides, and corner resize squares."""
+        tbl = getattr(self, '_active_table', None) or getattr(self, '_hovered_table', None) or getattr(self, '_selected_table', None)
+        if tbl is None:
+            return
+
+        try:
+            t_rect = self._get_table_geometry(tbl)
+            if t_rect.width() <= 0 or t_rect.height() <= 0:
+                return
+
+            p = QPainter(self.viewport())
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+            is_dark = bool(self.parent_cell and getattr(self.parent_cell, 'theme_mode', 'light') == 'dark')
+            accent_col = QColor("#2563eb") if not is_dark else QColor("#60a5fa")
+            hover_border = QColor("#93c5fd") if not is_dark else QColor("#1e3a8a")
+
+            is_active = bool(
+                getattr(self, '_resizing_table_col', False) or
+                getattr(self, '_resizing_table_size', False) or
+                getattr(self, '_resizing_table_corner', False) or
+                getattr(self, '_dragging_table_move', False)
+            )
+
+            # 1. Subtle table outline
+            pen = QPen(accent_col if is_active else hover_border, 1.5, Qt.PenStyle.SolidLine if is_active else Qt.PenStyle.DashLine)
+            p.setPen(pen)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawRoundedRect(t_rect.adjusted(-1, -1, 1, 1), 2.0, 2.0)
+
+            # 2. Move handle pill at top-left
+            pill_w = 26.0
+            pill_h = 13.0
+            pill_x = max(1.0, t_rect.left())
+            pill_y = max(1.0, t_rect.top() - pill_h - 1)
+            pill_rect = QRectF(pill_x, pill_y, pill_w, pill_h)
+            p.setPen(QPen(accent_col, 1.0))
+            p.setBrush(QBrush(QColor("#eff6ff") if not is_dark else QColor("#1e293b")))
+            p.drawRoundedRect(pill_rect, 3.0, 3.0)
+
+            # Draw grip dots in pill
+            p.setPen(QPen(accent_col, 2.0))
+            for dot_col in (pill_x + 7, pill_x + 13, pill_x + 19):
+                p.drawPoint(QPointF(dot_col, pill_y + 4.5))
+                p.drawPoint(QPointF(dot_col, pill_y + 8.5))
+
+            # 3. Active column divider vertical guideline
+            col_hit = getattr(self, '_table_resize_col_idx', None) if is_active else getattr(self, '_hovered_col_idx', None)
+            hit_type = getattr(self, '_hovered_table_hit', None)
+            if col_hit is not None or (hit_type == 'col_divider' and getattr(self, '_hovered_col_idx', None) is not None):
+                dividers = self._get_table_col_divider_xs(tbl)
+                target_idx = col_hit if col_hit is not None else getattr(self, '_hovered_col_idx', 0)
+                for c_idx, div_x in dividers:
+                    if c_idx == target_idx:
+                        guide_pen = QPen(accent_col, 2.5, Qt.PenStyle.SolidLine)
+                        p.setPen(guide_pen)
+                        p.drawLine(QPointF(div_x, t_rect.top()), QPointF(div_x, t_rect.bottom()))
+                        # Draw top & bottom drag indicator diamond
+                        p.setBrush(QBrush(accent_col))
+                        p.drawRect(QRectF(div_x - 3, t_rect.top() - 3, 6, 6))
+                        p.drawRect(QRectF(div_x - 3, t_rect.bottom() - 3, 6, 6))
+                        break
+
+            # 4. Right border guideline if resizing width
+            if getattr(self, '_resizing_table_size', False) or hit_type == 'right_border':
+                guide_pen = QPen(accent_col, 2.5, Qt.PenStyle.SolidLine)
+                p.setPen(guide_pen)
+                p.drawLine(QPointF(t_rect.right(), t_rect.top()), QPointF(t_rect.right(), t_rect.bottom()))
+                p.setBrush(QBrush(accent_col))
+                mid_y = (t_rect.top() + t_rect.bottom()) / 2.0
+                p.drawRoundedRect(QRectF(t_rect.right() - 3, mid_y - 8, 6, 16), 2.0, 2.0)
+
+            # 5. Bottom border guideline if resizing height
+            if hit_type == 'bottom_border':
+                guide_pen = QPen(accent_col, 2.5, Qt.PenStyle.SolidLine)
+                p.setPen(guide_pen)
+                p.drawLine(QPointF(t_rect.left(), t_rect.bottom()), QPointF(t_rect.right(), t_rect.bottom()))
+                p.setBrush(QBrush(accent_col))
+                mid_x = (t_rect.left() + t_rect.right()) / 2.0
+                p.drawRoundedRect(QRectF(mid_x - 8, t_rect.bottom() - 3, 16, 6), 2.0, 2.0)
+
+            # 6. Bottom-Right corner resize square
+            corner_size = 7.0
+            corner_rect = QRectF(t_rect.right() - corner_size / 2.0, t_rect.bottom() - corner_size / 2.0, corner_size, corner_size)
+            p.setPen(QPen(accent_col, 1.5))
+            p.setBrush(QBrush(QColor("#ffffff") if not is_dark else QColor("#1e293b")))
+            p.drawRect(corner_rect)
+
+            p.end()
+        except Exception:
+            pass
+
     def leaveEvent(self, event):
         super().leaveEvent(event)
         if getattr(self, '_hovered_image_pos', None) is not None and getattr(self, '_selected_image_pos', None) is None:
             self._hovered_image_pos = None
+        if getattr(self, '_hovered_table', None) is not None and not getattr(self, '_resizing_table_col', False) and not getattr(self, '_resizing_table_size', False) and not getattr(self, '_dragging_table_move', False):
+            self._hovered_table = None
+            self._hovered_table_hit = None
+            self._hovered_col_idx = None
             self.viewport().unsetCursor()
             self.viewport().update()
 
@@ -9727,6 +9998,40 @@ class CellInputEdit(QTextEdit):
         self._superscript_active = False
         self._drag_start_global_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
         self._is_cross_cell_drag = False
+
+        # 0. Check if clicking on table resize handle, column divider, or move handle
+        if event.button() == Qt.MouseButton.LeftButton:
+            tbl, hit_type, hit_data = self._hit_test_table(event.pos())
+            if tbl is not None and hit_type is not None:
+                self._active_table = tbl
+                self._selected_table = tbl
+                self._table_drag_start_mouse = event.pos()
+                self._table_orig_col_widths = self._get_table_col_widths(tbl)
+                self._table_orig_rect = self._get_table_geometry(tbl)
+                self._table_orig_cell_padding = float(tbl.format().cellPadding())
+
+                if hit_type == 'col_divider':
+                    self._resizing_table_col = True
+                    self._table_resize_col_idx = hit_data
+                    self.viewport().update()
+                    event.accept()
+                    return
+                elif hit_type in ('right_border', 'bottom_border'):
+                    self._resizing_table_size = True
+                    self._table_resize_hit = hit_type
+                    self.viewport().update()
+                    event.accept()
+                    return
+                elif hit_type == 'bottom_right_corner':
+                    self._resizing_table_corner = True
+                    self.viewport().update()
+                    event.accept()
+                    return
+                elif hit_type == 'table_move_handle':
+                    self._dragging_table_move = True
+                    self.viewport().update()
+                    event.accept()
+                    return
 
         # 1. Check if clicking on an image corner resize handle
         if event.button() == Qt.MouseButton.LeftButton:
@@ -9806,6 +10111,76 @@ class CellInputEdit(QTextEdit):
                     self.viewport().update()
 
     def mouseMoveEvent(self, event):
+        # 0a. Table column divider resize (inside the grid)
+        if getattr(self, '_resizing_table_col', False) and getattr(self, '_active_table', None) is not None:
+            dx = float(event.pos().x() - self._table_drag_start_mouse.x())
+            col_idx = self._table_resize_col_idx
+            orig = list(self._table_orig_col_widths)
+            if 0 <= col_idx < len(orig):
+                new_widths = list(orig)
+                min_w = 20.0
+                target_w = max(min_w, orig[col_idx] + dx)
+                diff = target_w - orig[col_idx]
+                new_widths[col_idx] = target_w
+                if col_idx + 1 < len(new_widths):
+                    new_widths[col_idx + 1] = max(min_w, orig[col_idx + 1] - diff)
+                fmt = self._active_table.format()
+                constraints = [QTextLength(QTextLength.Type.FixedLength, w) for w in new_widths]
+                fmt.setColumnWidthConstraints(constraints)
+                fmt.setWidth(QTextLength(QTextLength.Type.FixedLength, sum(new_widths) + 8))
+                self._active_table.setFormat(fmt)
+                self._adjust_height()
+                self.viewport().update()
+            event.accept()
+            return
+
+        # 0b. Table size resize (border or corner)
+        if (getattr(self, '_resizing_table_size', False) or getattr(self, '_resizing_table_corner', False)) and getattr(self, '_active_table', None) is not None:
+            dx = float(event.pos().x() - self._table_drag_start_mouse.x())
+            dy = float(event.pos().y() - self._table_drag_start_mouse.y())
+            hit = getattr(self, '_table_resize_hit', None)
+            is_corner = getattr(self, '_resizing_table_corner', False)
+            fmt = self._active_table.format()
+
+            if is_corner or hit == 'right_border':
+                orig_w = max(40.0, self._table_orig_rect.width()) if self._table_orig_rect else 100.0
+                new_w = max(60.0, orig_w + dx)
+                scale = new_w / orig_w
+                new_widths = [max(20.0, w * scale) for w in self._table_orig_col_widths]
+                fmt.setWidth(QTextLength(QTextLength.Type.FixedLength, new_w))
+                fmt.setColumnWidthConstraints([QTextLength(QTextLength.Type.FixedLength, w) for w in new_widths])
+
+            if is_corner or hit == 'bottom_border':
+                rows = max(1, self._active_table.rows())
+                new_pad = max(2.0, min(35.0, self._table_orig_cell_padding + dy / (rows * 2.0)))
+                fmt.setCellPadding(new_pad)
+
+            self._active_table.setFormat(fmt)
+            self._adjust_height()
+            self.viewport().update()
+            event.accept()
+            return
+
+        # 0c. Table move drag
+        if getattr(self, '_dragging_table_move', False):
+            ws = self._get_worksheet_view()
+            if ws and hasattr(ws, 'container') and ws.container and hasattr(self, 'parent_cell') and self.parent_cell in ws.cells:
+                g_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
+                c_pos = ws.container.mapFromGlobal(g_pos)
+                cur_y = c_pos.y()
+                parent_geo = self.parent_cell.geometry()
+                if cur_y < parent_geo.top() - 8 or cur_y > parent_geo.bottom() + 8:
+                    target_idx = None
+                    for idx, c in enumerate(ws.cells):
+                        geo = c.geometry()
+                        if geo.top() <= cur_y <= geo.bottom():
+                            target_idx = idx
+                            break
+                    if target_idx is not None and hasattr(ws, 'move_cell_to'):
+                        ws.move_cell_to(self.parent_cell, target_idx)
+            event.accept()
+            return
+
         # 1. Handle active image resizing from any corner without stretching
         if getattr(self, '_resizing_image', False):
             corner = getattr(self, '_resize_corner', 'br')
@@ -9854,8 +10229,33 @@ class CellInputEdit(QTextEdit):
             event.accept()
             return
 
-        # 2. Hover detection and cursor shape update for corner handles
+        # 2. Hover detection and cursor shape update for corner handles & tables
         if not (event.buttons() & Qt.MouseButton.LeftButton):
+            # Table hover detection
+            tbl, hit_type, hit_data = self._hit_test_table(event.pos())
+            if tbl is not None and hit_type is not None:
+                self._hovered_table = tbl
+                self._hovered_table_hit = hit_type
+                self._hovered_col_idx = hit_data
+                if hit_type == 'col_divider':
+                    self.viewport().setCursor(Qt.CursorShape.SplitHCursor)
+                elif hit_type == 'right_border':
+                    self.viewport().setCursor(Qt.CursorShape.SizeHorCursor)
+                elif hit_type == 'bottom_border':
+                    self.viewport().setCursor(Qt.CursorShape.SizeVerCursor)
+                elif hit_type == 'bottom_right_corner':
+                    self.viewport().setCursor(Qt.CursorShape.SizeFDiagCursor)
+                elif hit_type == 'table_move_handle':
+                    self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
+                self.viewport().update()
+            else:
+                if getattr(self, '_hovered_table', None) is not None:
+                    self._hovered_table = None
+                    self._hovered_table_hit = None
+                    self._hovered_col_idx = None
+                    self.viewport().unsetCursor()
+                    self.viewport().update()
+
             active_pos = getattr(self, '_selected_image_pos', None)
             if active_pos is None:
                 found = self._find_image_at_pos(event.pos())
@@ -9885,12 +10285,15 @@ class CellInputEdit(QTextEdit):
                         elif img_rect.contains(float(event.pos().x()), float(event.pos().y())):
                             self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
                         else:
-                            self.viewport().unsetCursor()
+                            if getattr(self, '_hovered_table_hit', None) is None:
+                                self.viewport().unsetCursor()
                     else:
-                        self.viewport().unsetCursor()
+                        if getattr(self, '_hovered_table_hit', None) is None:
+                            self.viewport().unsetCursor()
                 else:
-                    self.viewport().unsetCursor()
-            else:
+                    if getattr(self, '_hovered_table_hit', None) is None:
+                        self.viewport().unsetCursor()
+            elif getattr(self, '_hovered_table_hit', None) is None:
                 self.viewport().unsetCursor()
 
         # 3. Cross-cell drag selection
@@ -9928,6 +10331,19 @@ class CellInputEdit(QTextEdit):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if (getattr(self, '_resizing_table_col', False) or
+            getattr(self, '_resizing_table_size', False) or
+            getattr(self, '_resizing_table_corner', False) or
+            getattr(self, '_dragging_table_move', False)):
+            self._resizing_table_col = False
+            self._resizing_table_size = False
+            self._resizing_table_corner = False
+            self._dragging_table_move = False
+            self._adjust_height()
+            self.viewport().unsetCursor()
+            self.viewport().update()
+            event.accept()
+            return
         if getattr(self, '_resizing_image', False):
             self._resizing_image = False
             self.viewport().unsetCursor()
@@ -11074,7 +11490,7 @@ class WorksheetCell(QFrame):
     MODE_TEXT = "text"
     MODE_NONEXEC_MATH = "nonexec_math"
 
-    def __init__(self, cell_id: str = None, execution_idx: int = 1, theme_mode: str = "light", font_size: int = 14, font_family: str = "Times New Roman", engine=None, parent=None):
+    def __init__(self, cell_id: str = None, execution_idx: int = 1, theme_mode: str = "light", font_size: int = 14, font_family: str = "Times New Roman", engine=None, parent=None, lazy: bool = False, lazy_data: dict = None):
         super().__init__(parent)
         self.cell_id = cell_id or str(uuid.uuid4())
         self.execution_idx = execution_idx
@@ -11099,12 +11515,143 @@ class WorksheetCell(QFrame):
         self._current_plot_canvas = None
         self.is_editable = True
         self.is_selected = False
+        self.is_table = False
+        self._is_lazy = lazy
+        self._lazy_data = lazy_data
+
+        # Lazy widget backing fields
+        self._section_header_row = None
+        self._btn_section_toggle = None
+        self._title_edit = None
+        self._preview_row = None
+        self._preview_renderer = None
+        self._preview_timer_inst = None
+        self._output_row = None
+        self._math_renderer = None
+        self._lbl_eq_label = None
+        self._btn_remove_output = None
+        self._plot_container = None
+        self._plot_layout = None
+        self._error_box = None
+        self._input_edit_instance = None
+        self._lbl_prompt_instance = None
+        self._bracket_bar_instance = None
+        self._input_row_instance = None
+        self._content_container_instance = None
 
         self.setObjectName("cellExecutionGroup")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setStyleSheet("background-color: transparent;")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+        if lazy and lazy_data:
+            self.cell_id = lazy_data.get('cell_id', self.cell_id)
+            self.execution_idx = lazy_data.get('execution_idx', self.execution_idx)
+            self.is_section_header = lazy_data.get('is_section_header', False)
+            self.section_title = lazy_data.get('section_title', '')
+            self.section_level = lazy_data.get('section_level', 0)
+            self.is_collapsed = lazy_data.get('is_collapsed', False)
+            self._is_outside_section = bool(lazy_data.get('is_outside_section', False))
+            self.is_inside_section = bool(lazy_data.get('is_inside_section', True))
+            self.section_bg_colors = lazy_data.get('section_bg_colors', [])
+            self.section_html = lazy_data.get('section_html', '')
+            self.equation_label = lazy_data.get('equation_label', '')
+            self.input_mode = lazy_data.get('input_mode', self.MODE_2D_MATH)
+            self.is_table = bool(lazy_data.get('is_table', False) or '<table' in lazy_data.get('input', '').lower())
+            self.setVisible(False)
+        else:
+            self._init_ui()
+
+    @property
+    def input_edit(self):
+        if getattr(self, '_is_lazy', False):
+            self.hydrate()
+        return self._input_edit_instance
+
+    @input_edit.setter
+    def input_edit(self, val):
+        self._input_edit_instance = val
+
+    @property
+    def lbl_prompt(self):
+        if getattr(self, '_is_lazy', False):
+            self.hydrate()
+        return self._lbl_prompt_instance
+
+    @lbl_prompt.setter
+    def lbl_prompt(self, val):
+        self._lbl_prompt_instance = val
+
+    @property
+    def bracket_bar(self):
+        if getattr(self, '_is_lazy', False):
+            self.hydrate()
+        return self._bracket_bar_instance
+
+    @bracket_bar.setter
+    def bracket_bar(self, val):
+        self._bracket_bar_instance = val
+
+    @property
+    def input_row(self):
+        if getattr(self, '_is_lazy', False):
+            self.hydrate()
+        return self._input_row_instance
+
+    @input_row.setter
+    def input_row(self, val):
+        self._input_row_instance = val
+
+    @property
+    def content_container(self):
+        if getattr(self, '_is_lazy', False):
+            self.hydrate()
+        return self._content_container_instance
+
+    @content_container.setter
+    def content_container(self, val):
+        self._content_container_instance = val
+
+    def hydrate(self):
+        """Hydrate UI widgets for lazily loaded cells when they become visible."""
+        if not getattr(self, '_is_lazy', False):
+            return
+        self._is_lazy = False
+        data = getattr(self, '_lazy_data', None)
+        self._lazy_data = None
         self._init_ui()
+        ws = getattr(self, 'parent_worksheet', None)
+        if ws is not None:
+            self.set_worksheet_mode(ws.is_worksheet_mode)
+            self.set_zoom_factor(ws.zoom_percent / 100.0)
+            self.set_line_spacing(ws.default_line_spacing)
+            if getattr(ws, 'current_text_color', None):
+                self.set_text_color(ws.current_text_color)
+            if getattr(ws, 'current_highlight_color', None):
+                self.set_highlight_color(ws.current_highlight_color)
+            self.installEventFilter(ws)
+            if self._input_edit_instance:
+                self._input_edit_instance.installEventFilter(ws)
+                try:
+                    self._input_edit_instance.textChanged.connect(ws._on_cell_text_changed)
+                except Exception:
+                    pass
+            self.executeRequested.connect(ws._on_cell_execute_requested)
+            self.deleteRequested.connect(ws.delete_cell)
+            self.insertBelowRequested.connect(ws._handle_insert_request)
+            self.plotRequested.connect(ws.plotRequested.emit)
+            self.focusNextRequested.connect(ws._focus_next_cell)
+            self.focusPrevRequested.connect(ws._focus_prev_cell)
+            self.cellActivated.connect(ws._on_cell_activated)
+            self.sectionToggled.connect(ws._on_section_toggled)
+
+        if data:
+            self.from_dict(data)
+
+    def setVisible(self, visible: bool):
+        if visible and getattr(self, '_is_lazy', False):
+            self.hydrate()
+        super().setVisible(visible)
 
     def set_editable(self, editable: bool):
         self.is_editable = editable
@@ -11117,15 +11664,15 @@ class WorksheetCell(QFrame):
         if hasattr(self, 'lbl_prompt') and self.lbl_prompt:
             prompt_col = Theme.DARK_PROMPT if is_dark else Theme.OPENMATH_PROMPT
             self.lbl_prompt.setStyleSheet(f"color: {prompt_col}; font-weight: bold;")
-        if hasattr(self, 'math_renderer') and self.math_renderer:
-            self.math_renderer.set_theme_mode(mode)
-        if hasattr(self, 'preview_renderer') and self.preview_renderer:
-            self.preview_renderer.set_theme_mode(mode)
-        if hasattr(self, 'lbl_eq_label') and self.lbl_eq_label:
+        if self._math_renderer is not None:
+            self._math_renderer.set_theme_mode(mode)
+        if self._preview_renderer is not None:
+            self._preview_renderer.set_theme_mode(mode)
+        if self._lbl_eq_label is not None:
             eq_col = Theme.DARK_MATH_BLUE if is_dark else Theme.OPENMATH_MATH_BLUE
-            self.lbl_eq_label.setStyleSheet(f"color: {eq_col}; font-weight: 500;")
-        if hasattr(self, 'title_edit') and self.title_edit and hasattr(self.title_edit, '_update_style'):
-            self.title_edit._update_style()
+            self._lbl_eq_label.setStyleSheet(f"color: {eq_col}; font-weight: 500;")
+        if self._title_edit is not None and hasattr(self._title_edit, '_update_style'):
+            self._title_edit._update_style()
         if hasattr(self, 'input_edit') and self.input_edit and hasattr(self.input_edit, 'update_theme'):
             self.input_edit.update_theme(mode)
         self._update_selection_style()
@@ -11141,11 +11688,11 @@ class WorksheetCell(QFrame):
                 if cur.hasSelection():
                     cur.clearSelection()
                     self.input_edit.setTextCursor(cur)
-        if hasattr(self, 'title_edit') and self.title_edit and getattr(self, 'is_section_header', False):
+        if self._title_edit is not None and getattr(self, 'is_section_header', False):
             if selected:
-                self.title_edit.selectAll()
+                self._title_edit.selectAll()
             else:
-                self.title_edit.deselect()
+                self._title_edit.deselect()
 
     def _update_selection_style(self):
         if getattr(self, 'is_selected', False):
@@ -11181,14 +11728,14 @@ class WorksheetCell(QFrame):
         if not getattr(self, 'is_section_header', False):
             self.input_edit.setFocus()
         else:
-            if hasattr(self, 'title_edit'):
-                self.title_edit.setFocus()
+            if self._title_edit is not None:
+                self._title_edit.setFocus()
         super().mousePressEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if getattr(self, 'is_section_header', False) and hasattr(self, 'title_edit') and self.title_edit:
-            self.title_edit._adjust_size()
+        if getattr(self, 'is_section_header', False) and self._title_edit is not None:
+            self._title_edit._adjust_size()
 
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
@@ -11237,24 +11784,24 @@ class WorksheetCell(QFrame):
         content_layout.setSpacing(4)
         content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Section Header Row (Collapsible chevron ▼ / ► + Heading Label)
-        self.section_header_row = SectionHeaderRow(self, parent=self.content_container)
-        self.section_header_layout = QHBoxLayout(self.section_header_row)
-        self.section_header_layout.setContentsMargins(0, 4, 4, 4)
-        self.section_header_layout.setSpacing(6)
-        self.section_header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        # Lazy widget backing fields
+        self._section_header_row = None
+        self._btn_section_toggle = None
+        self._title_edit = None
 
-        self.btn_section_toggle = SectionDisclosureWidget(is_collapsed=False, parent=self.section_header_row)
-        self.btn_section_toggle.clicked.connect(self.toggle_section_collapsed)
-        self.section_header_layout.addWidget(self.btn_section_toggle)
+        self._preview_row = None
+        self._preview_renderer = None
+        self._preview_timer_inst = None
 
-        self.title_edit = SectionTitleEdit(self, parent=self.section_header_row)
-        self.lbl_section_title = self.title_edit
-        self.section_header_layout.addWidget(self.title_edit, 0)
-        self.section_header_layout.addStretch()
+        self._output_row = None
+        self._math_renderer = None
+        self._lbl_eq_label = None
+        self._btn_remove_output = None
 
-        content_layout.addWidget(self.section_header_row)
-        self.section_header_row.setVisible(False)
+        self._plot_container = None
+        self._plot_layout = None
+
+        self._error_box = None
 
         # Input Row (Prompt '>' + Input Editor)
         self.input_row = QWidget(self.content_container)
@@ -11279,122 +11826,209 @@ class WorksheetCell(QFrame):
         input_row_layout.addWidget(self.input_edit, 1)
 
         content_layout.addWidget(self.input_row)
-
-        # Live 2D Math LaTeX Preview Row (renders textbook math notation as typed)
-        self.preview_row = QWidget(self.content_container)
-        self.preview_row_layout = QHBoxLayout(self.preview_row)
-        self.preview_row_layout.setContentsMargins(20, 2, 16, 2)
-        self.preview_row_layout.setSpacing(8)
-
-        self.lbl_preview_badge = QLabel("2D Math", self.preview_row)
-        self.lbl_preview_badge.setFixedHeight(18)
-        self.lbl_preview_badge.setStyleSheet("""
-            QLabel {
-                color: #64748b;
-                background-color: #e2e8f0;
-                border-radius: 3px;
-                padding: 1px 5px;
-                font-size: 10px;
-                font-weight: bold;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-            }
-        """)
-        self.lbl_preview_badge.setVisible(False)
-        self.preview_row_layout.addWidget(self.lbl_preview_badge, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        self.preview_renderer = MathRendererWidget("", font_size=15, theme_mode=self.theme_mode, parent=self.preview_row)
-        self.preview_row_layout.addWidget(self.preview_renderer, 1)
-
-        content_layout.addWidget(self.preview_row)
-        self.preview_row.setVisible(False)
-
-        # Preview debounce timer
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(100)
-        self._preview_timer.timeout.connect(self._update_live_preview)
-        self.input_edit.textChanged.connect(self._schedule_live_preview)
         self._last_executed_text = None
-
-        # Output Row (Indented/Centered math output + Right-aligned Equation Label + Quick Remove)
-        self.output_row = CellOutputBox(self.content_container)
-        self.output_row.dismissRequested.connect(self.clear_output)
-        self.output_row_layout = QHBoxLayout(self.output_row)
-        self.output_row_layout.setContentsMargins(20, 4, 16, 4)
-        self.output_row_layout.setSpacing(8)
-
-        # Math Renderer Widget (Displays formula in math blue)
-        self.math_renderer = MathRendererWidget("", font_size=15, theme_mode=Theme.LIGHT, parent=self.output_row)
-        self.output_row_layout.addWidget(self.math_renderer, 1)
-
-        # Equation Label, e.g. (1), (2), (3)... on the right
-        self.lbl_eq_label = QLabel(f"({self.execution_idx})", self.output_row)
-        self.lbl_eq_label.setFont(QFont("Times New Roman", 13))
-        self.lbl_eq_label.setStyleSheet("color: #0000aa; font-weight: 500;")
-        self.lbl_eq_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.output_row_layout.addWidget(self.lbl_eq_label, 0, Qt.AlignmentFlag.AlignRight)
-
-        # Quick remove button '✕' for output
-        self.btn_remove_output = QPushButton("✕", self.output_row)
-        self.btn_remove_output.setFixedSize(20, 20)
-        self.btn_remove_output.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_remove_output.setToolTip("Remove Output (Delete / Backspace)")
-        self.btn_remove_output.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #94a3b8;
-                border: 1px solid transparent;
-                border-radius: 10px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background: #fee2e2;
-                border: 1px solid #fca5a5;
-                color: #b91c1c;
-            }
-            QPushButton:pressed {
-                background: #fecaca;
-            }
-        """)
-        self.btn_remove_output.clicked.connect(self.clear_output)
-        self.output_row_layout.addWidget(self.btn_remove_output, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        content_layout.addWidget(self.output_row)
-        self.output_row.setVisible(False)
-
-        # Embedded Plot Container (for polygonOmråde / plot / LPplot)
-        self.plot_container = QWidget(self.content_container)
-        self.plot_layout = QVBoxLayout(self.plot_container)
-        self.plot_layout.setContentsMargins(20, 4, 20, 8)
-        self.plot_layout.setSpacing(2)
-        def _on_plot_container_press(event):
-            if event.button() == Qt.MouseButton.LeftButton:
-                ws = self._get_worksheet_view()
-                if ws:
-                    ws.clear_cell_selection()
-                    ws.active_cell = self
-                    ws.activeCellChanged.emit(self)
-                self.setFocus()
-            QWidget.mousePressEvent(self.plot_container, event)
-        self.plot_container.mousePressEvent = _on_plot_container_press
-        content_layout.addWidget(self.plot_container)
-        self.plot_container.setVisible(False)
-
-        # Error Message Box (Selectable and removable)
-        self.error_box = CellErrorBox(self.content_container)
-        self.error_box.parent_cell = self
-        self.error_box.dismissRequested.connect(self.clear_error)
-        self.error_box.suggestionApplied.connect(self._on_suggestion_applied)
-        content_layout.addWidget(self.error_box)
-        self.error_box.setVisible(False)
-        self.lbl_error = self.error_box
 
         outer_layout.addWidget(self.content_container, 1)
 
         self.set_worksheet_mode(self.is_worksheet_mode)
         self._apply_mode_styling()
+
+    def _ensure_section_header(self):
+        if self._section_header_row is None:
+            self._section_header_row = SectionHeaderRow(self, parent=self.content_container)
+            self.section_header_layout = QHBoxLayout(self._section_header_row)
+            self.section_header_layout.setContentsMargins(0, 4, 4, 4)
+            self.section_header_layout.setSpacing(6)
+            self.section_header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+            self._btn_section_toggle = SectionDisclosureWidget(is_collapsed=getattr(self, 'is_collapsed', False), parent=self._section_header_row)
+            self._btn_section_toggle.clicked.connect(self.toggle_section_collapsed)
+            self.section_header_layout.addWidget(self._btn_section_toggle)
+
+            self._title_edit = SectionTitleEdit(self, parent=self._section_header_row)
+            self.section_header_layout.addWidget(self._title_edit, 0)
+            self.section_header_layout.addStretch()
+
+            self.content_container.layout().insertWidget(0, self._section_header_row)
+            self._section_header_row.setVisible(getattr(self, 'is_section_header', False))
+
+    @property
+    def section_header_row(self):
+        if self._section_header_row is None:
+            self._ensure_section_header()
+        return self._section_header_row
+
+    @property
+    def btn_section_toggle(self):
+        if self._btn_section_toggle is None:
+            self._ensure_section_header()
+        return self._btn_section_toggle
+
+    @property
+    def title_edit(self):
+        if self._title_edit is None:
+            self._ensure_section_header()
+        return self._title_edit
+
+    @property
+    def lbl_section_title(self):
+        return self.title_edit
+
+    def _ensure_output_row(self):
+        if self._output_row is None:
+            self._output_row = CellOutputBox(self.content_container)
+            self._output_row.dismissRequested.connect(self.clear_output)
+            self.output_row_layout = QHBoxLayout(self._output_row)
+            self.output_row_layout.setContentsMargins(20, 4, 16, 4)
+            self.output_row_layout.setSpacing(8)
+
+            self._math_renderer = MathRendererWidget("", font_size=15, theme_mode=Theme.LIGHT, parent=self._output_row)
+            self.output_row_layout.addWidget(self._math_renderer, 1)
+
+            self._lbl_eq_label = QLabel(f"({self.execution_idx})", self._output_row)
+            self._lbl_eq_label.setFont(QFont("Times New Roman", 13))
+            self._lbl_eq_label.setStyleSheet("color: #0000aa; font-weight: 500;")
+            self._lbl_eq_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.output_row_layout.addWidget(self._lbl_eq_label, 0, Qt.AlignmentFlag.AlignRight)
+
+            self._btn_remove_output = QPushButton("✕", self._output_row)
+            self._btn_remove_output.setFixedSize(20, 20)
+            self._btn_remove_output.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._btn_remove_output.setToolTip("Remove Output (Delete / Backspace)")
+            self._btn_remove_output.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    color: #94a3b8;
+                    border: 1px solid transparent;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background: #fee2e2;
+                    border: 1px solid #fca5a5;
+                    color: #b91c1c;
+                }
+                QPushButton:pressed {
+                    background: #fecaca;
+                }
+            """)
+            self._btn_remove_output.clicked.connect(self.clear_output)
+            self.output_row_layout.addWidget(self._btn_remove_output, 0, Qt.AlignmentFlag.AlignVCenter)
+
+            self.content_container.layout().addWidget(self._output_row)
+            self._output_row.setVisible(False)
+
+    @property
+    def output_row(self):
+        if self._output_row is None:
+            self._ensure_output_row()
+        return self._output_row
+
+    @property
+    def math_renderer(self):
+        if self._math_renderer is None:
+            self._ensure_output_row()
+        return self._math_renderer
+
+    @property
+    def lbl_eq_label(self):
+        if self._lbl_eq_label is None:
+            self._ensure_output_row()
+        return self._lbl_eq_label
+
+    @property
+    def btn_remove_output(self):
+        if self._btn_remove_output is None:
+            self._ensure_output_row()
+        return self._btn_remove_output
+
+    def _ensure_plot_container(self):
+        if self._plot_container is None:
+            self._plot_container = QWidget(self.content_container)
+            self._plot_layout = QVBoxLayout(self._plot_container)
+            self._plot_layout.setContentsMargins(20, 4, 20, 8)
+            self._plot_layout.setSpacing(2)
+            def _on_plot_container_press(event):
+                if event.button() == Qt.MouseButton.LeftButton:
+                    ws = self._get_worksheet_view()
+                    if ws:
+                        ws.clear_cell_selection()
+                        ws.active_cell = self
+                        ws.activeCellChanged.emit(self)
+                    self.setFocus()
+                QWidget.mousePressEvent(self._plot_container, event)
+            self._plot_container.mousePressEvent = _on_plot_container_press
+            self.content_container.layout().addWidget(self._plot_container)
+            self._plot_container.setVisible(False)
+
+    @property
+    def plot_container(self):
+        if self._plot_container is None:
+            self._ensure_plot_container()
+        return self._plot_container
+
+    @property
+    def plot_layout(self):
+        if self._plot_layout is None:
+            self._ensure_plot_container()
+        return self._plot_layout
+
+    def _ensure_error_box(self):
+        if self._error_box is None:
+            self._error_box = CellErrorBox(self.content_container)
+            self._error_box.parent_cell = self
+            self._error_box.dismissRequested.connect(self.clear_error)
+            self._error_box.suggestionApplied.connect(self._on_suggestion_applied)
+            self.content_container.layout().addWidget(self._error_box)
+            self._error_box.setVisible(False)
+
+    @property
+    def error_box(self):
+        if self._error_box is None:
+            self._ensure_error_box()
+        return self._error_box
+
+    @property
+    def lbl_error(self):
+        return self.error_box
+
+    def _ensure_preview_row(self):
+        if self._preview_row is None:
+            self._preview_row = QWidget(self.content_container)
+            self.preview_row_layout = QHBoxLayout(self._preview_row)
+            self.preview_row_layout.setContentsMargins(20, 2, 16, 2)
+            self.preview_row_layout.setSpacing(8)
+            self.lbl_preview_badge = QLabel("2D Math", self._preview_row)
+            self.lbl_preview_badge.setFixedHeight(18)
+            self.lbl_preview_badge.setVisible(False)
+            self.preview_row_layout.addWidget(self.lbl_preview_badge, 0, Qt.AlignmentFlag.AlignVCenter)
+            self._preview_renderer = MathRendererWidget("", font_size=15, theme_mode=self.theme_mode, parent=self._preview_row)
+            self.preview_row_layout.addWidget(self._preview_renderer, 1)
+            self.content_container.layout().addWidget(self._preview_row)
+            self._preview_row.setVisible(False)
+
+    @property
+    def preview_row(self):
+        if self._preview_row is None:
+            self._ensure_preview_row()
+        return self._preview_row
+
+    @property
+    def preview_renderer(self):
+        if self._preview_renderer is None:
+            self._ensure_preview_row()
+        return self._preview_renderer
+
+    @property
+    def _preview_timer(self):
+        if self._preview_timer_inst is None:
+            self._preview_timer_inst = QTimer(self)
+            self._preview_timer_inst.setSingleShot(True)
+            self._preview_timer_inst.setInterval(100)
+            self._preview_timer_inst.timeout.connect(self._update_live_preview)
+        return self._preview_timer_inst
 
     def _on_cursor_changed(self):
         text = self.get_input_text()
@@ -11500,56 +12134,63 @@ class WorksheetCell(QFrame):
 
     def _apply_indentation(self):
         """Apply hierarchical indentation based on section nesting level."""
+        if getattr(self, '_is_lazy', False):
+            return
         lvl = max(0, getattr(self, 'section_level', 0))
         step = 26
         if getattr(self, 'is_section_header', False):
             indent = lvl * step
-            self.section_header_layout.setContentsMargins(indent, 4, 4, 4)
-            if hasattr(self, 'content_container') and self.content_container.layout():
-                self.content_container.layout().setContentsMargins(0, 0, 0, 0)
+            sh_layout = getattr(self, 'section_header_layout', None)
+            if sh_layout is not None:
+                sh_layout.setContentsMargins(indent, 4, 4, 4)
+            elif self._section_header_row is not None and self._section_header_row.layout():
+                self._section_header_row.layout().setContentsMargins(indent, 4, 4, 4)
+            if self._content_container_instance is not None and self._content_container_instance.layout():
+                self._content_container_instance.layout().setContentsMargins(0, 0, 0, 0)
         else:
             if getattr(self, 'is_inside_section', False):
                 indent = (lvl + 1) * step
             else:
                 indent = 0
-            if hasattr(self, 'content_container') and self.content_container.layout():
-                self.content_container.layout().setContentsMargins(indent, 0, 0, 0)
+            if self._content_container_instance is not None and self._content_container_instance.layout():
+                self._content_container_instance.layout().setContentsMargins(indent, 0, 0, 0)
 
     def _apply_section_header_styling(self):
         """Apply section header visual presentation matching worksheet style."""
         if not getattr(self, 'is_section_header', False):
-            self.section_header_row.setVisible(False)
+            if self._section_header_row is not None:
+                self._section_header_row.setVisible(False)
             return
 
         self.bracket_bar.setVisible(False)
         self.input_row.setVisible(False)
-        if hasattr(self, 'preview_row'):
-            self.preview_row.setVisible(False)
-        if hasattr(self, 'output_row'):
-            self.output_row.setVisible(False)
-        self.section_header_row.setVisible(True)
+        if self._preview_row is not None:
+            self._preview_row.setVisible(False)
+        if self._output_row is not None:
+            self._output_row.setVisible(False)
+        self._ensure_section_header()
+        self._section_header_row.setVisible(True)
 
-        self.btn_section_toggle.set_collapsed(getattr(self, 'is_collapsed', False))
+        self._btn_section_toggle.set_collapsed(getattr(self, 'is_collapsed', False))
         self._apply_indentation()
 
-        if hasattr(self, 'title_edit'):
-            cur_html = getattr(self, 'section_html', '') or ''
-            cur_text = getattr(self, 'section_title', '') or ''
-            self.title_edit.blockSignals(True)
-            if cur_html and '<' in cur_html and '>' in cur_html:
-                self.title_edit.setHtml(cur_html)
-            elif cur_text:
-                self.title_edit.setPlainText(cur_text)
-                sec_bgs = getattr(self, 'section_bg_colors', [])
-                if sec_bgs:
-                    m_col = _parse_worksheet_color(str(sec_bgs[-1]))
-                    if m_col:
-                        self.title_edit.set_highlight_color(QColor(m_col))
-            else:
-                self.title_edit.clear()
-            self.title_edit.blockSignals(False)
-            self.title_edit._update_style()
-            self.title_edit._adjust_size()
+        cur_html = getattr(self, 'section_html', '') or ''
+        cur_text = getattr(self, 'section_title', '') or ''
+        self._title_edit.blockSignals(True)
+        if cur_html and '<' in cur_html and '>' in cur_html:
+            self._title_edit.setHtml(cur_html)
+        elif cur_text:
+            self._title_edit.setPlainText(cur_text)
+            sec_bgs = getattr(self, 'section_bg_colors', [])
+            if sec_bgs:
+                m_col = _parse_worksheet_color(str(sec_bgs[-1]))
+                if m_col:
+                    self._title_edit.set_highlight_color(QColor(m_col))
+        else:
+            self._title_edit.clear()
+        self._title_edit.blockSignals(False)
+        self._title_edit._update_style()
+        self._title_edit._adjust_size()
 
     def init_section_header_ui(self):
         """Compatibility alias for _apply_section_header_styling."""
@@ -11884,7 +12525,8 @@ class WorksheetCell(QFrame):
 
     def set_execution_idx(self, idx: int):
         self.execution_idx = idx
-        self.lbl_eq_label.setText(f"({idx})")
+        if getattr(self, '_lbl_eq_label', None) is not None:
+            self._lbl_eq_label.setText(f"({idx})")
 
     def set_input_text(self, text: str):
         if self.input_mode == self.MODE_2D_MATH and ('/' in text or r'\frac{' in text):
@@ -11895,6 +12537,8 @@ class WorksheetCell(QFrame):
             self.input_edit.setPlainText(text)
 
     def get_input_text(self) -> str:
+        if getattr(self, '_is_lazy', False) and getattr(self, '_lazy_data', None):
+            return str(self._lazy_data.get('input', '')).strip()
         if hasattr(self.input_edit, 'get_plain_or_math_text'):
             return self.input_edit.get_plain_or_math_text().strip()
         return self.input_edit.toPlainText().strip()
@@ -12597,23 +13241,27 @@ class WorksheetCell(QFrame):
     def set_result(self, result: CASResult):
         """Display computation result: mathematical formula, equation label, or plot."""
         self.current_result = result
-        self.lbl_error.setVisible(False)
+        if self._error_box is not None:
+            self._error_box.setVisible(False)
 
         # Trailing colon ':' suppresses output display
         if self.get_input_text().strip().endswith(':'):
-            self.output_row.setVisible(False)
-            self.plot_container.setVisible(False)
-            if hasattr(self, 'preview_row'):
-                self.preview_row.setVisible(False)
+            if self._output_row is not None:
+                self._output_row.setVisible(False)
+            if self._plot_container is not None:
+                self._plot_container.setVisible(False)
+            if self._preview_row is not None:
+                self._preview_row.setVisible(False)
             return
 
         # Check if result is a Plot
         if result.is_plot or isinstance(result.raw_result, PlotData):
-            self.output_row.setVisible(False)
+            if self._output_row is not None:
+                self._output_row.setVisible(False)
             self._render_embedded_plot(result.raw_result if isinstance(result.raw_result, PlotData) else result.plot_data.get('plot_obj'))
         else:
-            if self.plot_container.isVisible():
-                self.plot_container.setVisible(False)
+            if self._plot_container is not None and self._plot_container.isVisible():
+                self._plot_container.setVisible(False)
 
             # Display LaTeX math formula in math blue
             latex_content = result.exact_latex or result.numeric_latex
@@ -12622,8 +13270,9 @@ class WorksheetCell(QFrame):
             if inferred_u and result.exact_text and re.match(r'^[+-]?\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?$', result.exact_text.strip()):
                 if latex_content and not re.search(r'\\text\{\s*' + re.escape(inferred_u), latex_content):
                     latex_content = f"{latex_content}\\text{{ {inferred_u}}}"
-            self.math_renderer.set_latex(latex_content)
-            self.output_row.setVisible(True)
+            self._ensure_output_row()
+            self._math_renderer.set_latex(latex_content)
+            self._output_row.setVisible(True)
 
     def _render_embedded_plot(self, pdata: PlotData):
         """
@@ -12633,9 +13282,12 @@ class WorksheetCell(QFrame):
         if not pdata:
             return
 
+        self._ensure_plot_container()
+        self._plot_container.setVisible(True)
+
         # Clear existing plot widgets if any
-        while self.plot_layout.count():
-            item = self.plot_layout.takeAt(0)
+        while self._plot_layout.count():
+            item = self._plot_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
@@ -12925,22 +13577,27 @@ class WorksheetCell(QFrame):
 
     def clear_error(self):
         """Remove/dismiss the error display."""
-        self.error_box.setVisible(False)
-        self.error_box.setText("")
+        if self._error_box is not None:
+            self._error_box.setVisible(False)
+            self._error_box.setText("")
 
     def clear_output(self):
         """Remove/dismiss mathematical output row."""
-        self.output_row.setVisible(False)
-        self.plot_container.setVisible(False)
-        if hasattr(self, 'preview_row'):
-            self.preview_row.setVisible(False)
+        if self._output_row is not None:
+            self._output_row.setVisible(False)
+        if self._plot_container is not None:
+            self._plot_container.setVisible(False)
+        if self._preview_row is not None:
+            self._preview_row.setVisible(False)
         self.current_result = None
         self._last_executed_text = None
 
     def set_error(self, title: str, details: str, input_expr: str = ""):
         """Display selectable and removable error with smart suggestions."""
-        self.output_row.setVisible(False)
-        self.plot_container.setVisible(False)
+        if self._output_row is not None:
+            self._output_row.setVisible(False)
+        if self._plot_container is not None:
+            self._plot_container.setVisible(False)
         clean_details = details or title
         clean_details = re.sub(r'CASEngine\._init_builtins\.<locals>\.<lambda>\(\)', 'function()', clean_details)
         clean_details = re.sub(r'<locals>\.<lambda>\(\)', 'function()', clean_details)
@@ -12951,8 +13608,9 @@ class WorksheetCell(QFrame):
         from cas_engine.error_suggester import suggest_fix
         suggestion = suggest_fix(faulty, details, engine=self.engine)
 
-        self.error_box.set_error_and_suggestion(msg, suggestion)
-        self.error_box.setVisible(True)
+        self._ensure_error_box()
+        self._error_box.set_error_and_suggestion(msg, suggestion)
+        self._error_box.setVisible(True)
 
     def _on_suggestion_applied(self, suggestion: str):
         if suggestion:
@@ -13154,12 +13812,18 @@ class WorksheetCell(QFrame):
         self._show_cell_context_menu(event.globalPos())
 
     def to_dict(self) -> dict:
+        if getattr(self, '_is_lazy', False) and getattr(self, '_lazy_data', None):
+            res = dict(self._lazy_data)
+            if getattr(self, 'is_table', False):
+                res['is_table'] = True
+            return res
         import re
         has_embedded = bool(hasattr(self.input_edit, 'embedded_images') and self.input_edit.embedded_images)
         html_low = self.input_edit.toHtml().lower()
         img_srcs = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', html_low)
         has_real_img = bool(has_embedded or any(not (s.startswith('frac://') or s.startswith('integral://')) for s in img_srcs))
-        is_rich = bool(has_real_img or (self.input_mode == self.MODE_TEXT and '<' in self.input_edit.toHtml()))
+        is_table = bool(getattr(self, 'is_table', False) or '<table' in html_low)
+        is_rich = bool(has_real_img or is_table or (self.input_mode == self.MODE_TEXT and '<' in self.input_edit.toHtml()))
         data = {
             'cell_id': self.cell_id,
             'execution_idx': self.execution_idx,
@@ -13171,6 +13835,8 @@ class WorksheetCell(QFrame):
             'line_spacing': getattr(self, 'current_line_spacing', 1.0),
             'spans': None if is_rich else self.input_edit.get_spans(),
         }
+        if is_table:
+            data['is_table'] = True
         if has_embedded:
             data['embedded_images'] = dict(self.input_edit.embedded_images)
         if getattr(self, 'is_section_header', False):
@@ -13201,6 +13867,38 @@ class WorksheetCell(QFrame):
         return data
 
     def from_dict(self, data: dict):
+        if getattr(self, '_is_lazy', False):
+            self._lazy_data = dict(data)
+            self.cell_id = data.get('cell_id', self.cell_id)
+            self.execution_idx = data.get('execution_idx', self.execution_idx)
+            self.is_section_header = data.get('is_section_header', False)
+            self.section_title = data.get('section_title', '')
+            self.section_level = data.get('section_level', 0)
+            self.is_collapsed = data.get('is_collapsed', False)
+            self._is_outside_section = bool(data.get('is_outside_section', False))
+            self.is_inside_section = bool(data.get('is_inside_section', True))
+            self.section_bg_colors = data.get('section_bg_colors', [])
+            self.section_html = data.get('section_html', '')
+            self.equation_label = data.get('equation_label', '')
+            self.input_mode = data.get('input_mode', self.MODE_2D_MATH)
+            self.is_table = bool(data.get('is_table', False) or '<table' in data.get('input', '').lower())
+            return
+
+        blocked = False
+        if self._input_edit_instance:
+            self._input_edit_instance.blockSignals(True)
+            self._input_edit_instance.document().blockSignals(True)
+            blocked = True
+
+        try:
+            self._from_dict_body(data)
+        finally:
+            if blocked:
+                self._input_edit_instance.document().blockSignals(False)
+                self._input_edit_instance.blockSignals(False)
+                self._input_edit_instance._adjust_height()
+
+    def _from_dict_body(self, data: dict):
         self.cell_id = data.get('cell_id', self.cell_id)
         self.set_execution_idx(data.get('execution_idx', self.execution_idx))
 
@@ -13249,7 +13947,6 @@ class WorksheetCell(QFrame):
                     raw_bytes = base64.b64decode(b64_str)
                     qimg = QImage()
                     if qimg.loadFromData(raw_bytes):
-                        qimg = qimg.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
                         self.input_edit.document().addResource(
                             QTextDocument.ResourceType.ImageResource,
                             QUrl(img_id),
@@ -13264,8 +13961,8 @@ class WorksheetCell(QFrame):
         spans = data.get('spans')
         if spans:
             self.input_edit.set_spans(spans)
-            if hasattr(self, 'output_row'):
-                self.output_row.setVisible(False)
+            if self._output_row is not None:
+                self._output_row.setVisible(False)
         elif embedded or self.is_table or '<img' in inp_text.lower() or '<span' in inp_text.lower() or '<div' in inp_text.lower() or '<table' in inp_text.lower():
             if '<img' in inp_text.lower():
                 import re
@@ -13333,13 +14030,13 @@ class WorksheetCell(QFrame):
             )
             self.set_result(res)
         elif data.get('error'):
-            if hasattr(self, 'lbl_error'):
-                self.lbl_error.setText(data['error'])
-                self.lbl_error.setVisible(True)
-            self.output_row.setVisible(False)
+            self._ensure_error_box()
+            self._error_box.setText(data['error'])
+            self._error_box.setVisible(True)
+            if self._output_row is not None:
+                self._output_row.setVisible(False)
         else:
-            self.output_row.setVisible(False)
-            if hasattr(self, 'lbl_error'):
-                self.lbl_error.setVisible(False)
-            if hasattr(self, 'error_box'):
-                self.error_box.setVisible(False)
+            if self._output_row is not None:
+                self._output_row.setVisible(False)
+            if self._error_box is not None:
+                self._error_box.setVisible(False)

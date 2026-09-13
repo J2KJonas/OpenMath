@@ -1277,7 +1277,7 @@ class WorksheetView(QWidget):
                 section_stack.append(lvl)
                 cell.is_inside_section = bool(len(section_stack) > 1)
                 cell._apply_indentation()
-                if hasattr(cell, 'title_edit'):
+                if not getattr(cell, '_is_lazy', False) and getattr(cell, '_title_edit', None) is not None:
                     cell.title_edit._update_style()
             else:
                 if getattr(cell, '_is_outside_section', False):
@@ -2044,28 +2044,54 @@ class WorksheetView(QWidget):
 
         self._loading_cell_ids = set()
         self._is_loading = True
+        self.setUpdatesEnabled(False)
+        self.container.setUpdatesEnabled(False)
+        collapsed_depth_stack = []
         try:
             for i, cdata in enumerate(cells_data):
-                cell = self.add_cell(expression="", focus=False)
-                cell.from_dict(cdata)
+                sec_level = cdata.get('section_level', 0)
+                is_sec = bool(cdata.get('is_section_header', False))
+                if is_sec:
+                    while collapsed_depth_stack and collapsed_depth_stack[-1] >= sec_level:
+                        collapsed_depth_stack.pop()
+                elif cdata.get('_is_outside_section'):
+                    collapsed_depth_stack.clear()
+                else:
+                    while collapsed_depth_stack and collapsed_depth_stack[-1] > sec_level:
+                        collapsed_depth_stack.pop()
+                is_initially_hidden = bool(collapsed_depth_stack)
+
+                if is_initially_hidden:
+                    cell = WorksheetCell(
+                        execution_idx=cdata.get('execution_idx', self.execution_counter + 1),
+                        theme_mode=self.theme_mode,
+                        font_size=self.default_font_size,
+                        font_family=self.default_font_family,
+                        engine=self.engine,
+                        parent=self.container,
+                        lazy=True,
+                        lazy_data=cdata
+                    )
+                    cell.parent_worksheet = self
+                    self.cells.append(cell)
+                    self.cells_layout.addWidget(cell)
+                else:
+                    cell = self.add_cell(expression="", focus=False)
+                    cell.from_dict(cdata)
+
+                if cdata.get('is_section_header') and cdata.get('is_collapsed'):
+                    collapsed_depth_stack.append(sec_level)
+
                 self.execution_counter = max(self.execution_counter, cell.execution_idx)
-                if progress_callback and (i % 5 == 0 or i == total_cells - 1):
+                if progress_callback and (i % 50 == 0 or i == total_cells - 1):
                     progress_callback(i + 1, total_cells, f"Loading element {i + 1} of {total_cells}...")
         finally:
             self._is_loading = False
+            self.setUpdatesEnabled(True)
+            self.container.setUpdatesEnabled(True)
 
         self.renumber_equation_labels()
         self.cellCountChanged.emit(len(self.cells))
-        self.update_section_hierarchy()
-
-        # Apply initial collapse states for collapsed sections
-        if progress_callback:
-            progress_callback(total_cells, total_cells, "Finalizing sections and layout...")
-
-        for cell in self.cells:
-            if getattr(cell, 'is_section_header', False) and getattr(cell, 'is_collapsed', False):
-                self._on_section_toggled(cell.cell_id, True)
-
         self.update_section_hierarchy()
         QTimer.singleShot(0, self.adjust_visible_cells_height)
 
@@ -2085,6 +2111,20 @@ class WorksheetView(QWidget):
             QTimer.singleShot(50, _focus_first)
         else:
             self.add_cell(focus=True)
+
+    def move_cell_to(self, cell: WorksheetCell, target_idx: int):
+        """Move an existing cell to a new position in the worksheet."""
+        if not cell or cell not in self.cells or target_idx < 0 or target_idx >= len(self.cells):
+            return
+        cur_idx = self.cells.index(cell)
+        if cur_idx == target_idx:
+            return
+        self.cells_layout.removeWidget(cell)
+        self.cells.pop(cur_idx)
+        self.cells.insert(target_idx, cell)
+        self.cells_layout.insertWidget(target_idx, cell)
+        self.update_section_hierarchy()
+        self.renumber_equation_labels()
 
     def load_from_json(self, json_str: str, progress_callback=None):
         if not json_str or not json_str.strip():
@@ -2128,15 +2168,51 @@ class WorksheetView(QWidget):
 
         self._loading_cell_ids = set()
         self._is_loading = True
+        self.setUpdatesEnabled(False)
+        self.container.setUpdatesEnabled(False)
+        collapsed_depth_stack = []
         try:
             for i, cdata in enumerate(cell_data_list):
-                cell = self.add_cell(expression="", focus=False)
-                cell.from_dict(cdata)
+                sec_level = cdata.get('section_level', 0)
+                is_sec = bool(cdata.get('is_section_header', False))
+                if is_sec:
+                    while collapsed_depth_stack and collapsed_depth_stack[-1] >= sec_level:
+                        collapsed_depth_stack.pop()
+                elif cdata.get('_is_outside_section'):
+                    collapsed_depth_stack.clear()
+                else:
+                    while collapsed_depth_stack and collapsed_depth_stack[-1] > sec_level:
+                        collapsed_depth_stack.pop()
+                is_initially_hidden = bool(collapsed_depth_stack)
+
+                if is_initially_hidden:
+                    cell = WorksheetCell(
+                        execution_idx=cdata.get('execution_idx', self.execution_counter + 1),
+                        theme_mode=self.theme_mode,
+                        font_size=self.default_font_size,
+                        font_family=self.default_font_family,
+                        engine=self.engine,
+                        parent=self.container,
+                        lazy=True,
+                        lazy_data=cdata
+                    )
+                    cell.parent_worksheet = self
+                    self.cells.append(cell)
+                    self.cells_layout.addWidget(cell)
+                else:
+                    cell = self.add_cell(expression="", focus=False)
+                    cell.from_dict(cdata)
+
+                if cdata.get('is_section_header') and cdata.get('is_collapsed'):
+                    collapsed_depth_stack.append(sec_level)
+
                 self.execution_counter = max(self.execution_counter, cell.execution_idx)
-                if progress_callback and (i % 5 == 0 or i == total_cells - 1):
+                if progress_callback and (i % 50 == 0 or i == total_cells - 1):
                     progress_callback(i + 1, total_cells, f"Loading element {i + 1} of {total_cells}...")
         finally:
             self._is_loading = False
+            self.setUpdatesEnabled(True)
+            self.container.setUpdatesEnabled(True)
 
         self.renumber_equation_labels()
         self.cellCountChanged.emit(len(self.cells))
