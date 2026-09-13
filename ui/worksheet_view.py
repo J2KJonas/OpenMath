@@ -631,8 +631,16 @@ class WorksheetView(QWidget):
         self.zoom_percent = max(25, min(500, int(percent)))
         self._smooth_zoom = float(self.zoom_percent)
         factor = self.zoom_percent / 100.0
-        for cell in self.cells:
-            cell.set_zoom_factor(factor)
+        self.setUpdatesEnabled(False)
+        if hasattr(self, 'container') and self.container:
+            self.container.setUpdatesEnabled(False)
+        try:
+            for cell in self.cells:
+                cell.set_zoom_factor(factor)
+        finally:
+            if hasattr(self, 'container') and self.container:
+                self.container.setUpdatesEnabled(True)
+            self.setUpdatesEnabled(True)
         self.zoomChanged.emit(self.zoom_percent)
         self.statusMessage.emit(f"Zoom: {self.zoom_percent}%", 1500)
 

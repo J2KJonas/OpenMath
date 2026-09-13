@@ -329,7 +329,9 @@ class WorksheetIO:
                                 table_embedded_images[img_id] = img_b64
                                 raw_w = int(img.attrib.get('width', '350'))
                                 raw_h = int(img.attrib.get('height', '250'))
-                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes, max_w=380)
+                                col_count = len(cols) or 1
+                                max_col_img_w = max(110, int(650 / col_count))
+                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes, max_w=max_col_img_w)
                                 cell_pieces.append(f'<div style="text-align: center; margin: 4px 0;"><img src="{img_id}" width="{img_w}" height="{img_h}"/></div>')
 
                         # 2. Equations / Math

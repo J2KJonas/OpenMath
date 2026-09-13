@@ -7859,6 +7859,7 @@ class CellInputEdit(QTextEdit):
                 if hasattr(frac, '_adjust_size'):
                     frac._adjust_size()
                     self._on_frac_size_changed(frac)
+        self._constrain_tables_to_viewport()
         self._adjust_height()
         self._reposition_fractions()
         self._update_tall_parentheses()
@@ -9655,6 +9656,12 @@ class CellInputEdit(QTextEdit):
         doc = self.document()
         if ch_pos < 0 or ch_pos >= doc.characterCount() - 1:
             return None
+        c_test = QTextCursor(doc)
+        c_test.setPosition(ch_pos)
+        c_test.setPosition(ch_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+        if c_test.selectedText() != '\ufffc':
+            return None
+
         c_start = QTextCursor(doc)
         c_start.setPosition(ch_pos)
         c_end = QTextCursor(doc)
@@ -9708,7 +9715,7 @@ class CellInputEdit(QTextEdit):
                 c.setPosition(test_p)
                 c.setPosition(test_p + 1, QTextCursor.MoveMode.KeepAnchor)
                 fmt = c.charFormat()
-                if fmt.isImageFormat():
+                if fmt.isImageFormat() and c.selectedText() == '\ufffc':
                     img_rect = self._get_image_rect(test_p, fmt.toImageFormat())
                     if img_rect and img_rect.adjusted(-6, -6, 6, 6).contains(float(pos.x()), float(pos.y())):
                         return (test_p, fmt.toImageFormat(), img_rect)
@@ -9719,7 +9726,7 @@ class CellInputEdit(QTextEdit):
                 c.setPosition(ch_pos)
                 c.setPosition(ch_pos + 1, QTextCursor.MoveMode.KeepAnchor)
                 fmt = c.charFormat()
-                if fmt.isImageFormat():
+                if fmt.isImageFormat() and c.selectedText() == '\ufffc':
                     img_rect = self._get_image_rect(ch_pos, fmt.toImageFormat())
                     if img_rect and img_rect.adjusted(-6, -6, 6, 6).contains(float(pos.x()), float(pos.y())):
                         return (ch_pos, fmt.toImageFormat(), img_rect)
@@ -9802,11 +9809,44 @@ class CellInputEdit(QTextEdit):
         return tables
 
     def _get_table_geometry(self, table: QTextTable) -> QRectF:
-        """Get viewport bounding rectangle for a QTextTable."""
-        doc_rect = self.document().documentLayout().frameBoundingRect(table)
-        vx = doc_rect.x() - self.horizontalScrollBar().value()
-        vy = doc_rect.y() - self.verticalScrollBar().value()
-        return QRectF(vx, vy, doc_rect.width(), doc_rect.height())
+        """Get viewport bounding rectangle for a QTextTable accurately encompassing all cells."""
+        cols = table.columns()
+        rows = table.rows()
+        layout = self.document().documentLayout()
+        h_scroll = self.horizontalScrollBar().value()
+        v_scroll = self.verticalScrollBar().value()
+
+        if cols <= 0 or rows <= 0 or not layout:
+            doc_rect = layout.frameBoundingRect(table) if layout else QRectF(0, 0, 100, 100)
+            return QRectF(doc_rect.x() - h_scroll, doc_rect.y() - v_scroll, doc_rect.width(), doc_rect.height())
+
+        min_x = 999999.0
+        min_y = 999999.0
+        max_x = -999999.0
+        max_y = -999999.0
+
+        for r in range(rows):
+            for c in range(cols):
+                cell = table.cellAt(r, c)
+                if not cell.isValid():
+                    continue
+                c_start = cell.firstCursorPosition()
+                c_end = cell.lastCursorPosition()
+                b1 = layout.blockBoundingRect(c_start.block())
+                b2 = layout.blockBoundingRect(c_end.block())
+                min_x = min(min_x, b1.left(), b2.left())
+                min_y = min(min_y, b1.top(), b2.top())
+                max_x = max(max_x, b1.right(), b2.right())
+                max_y = max(max_y, b1.bottom(), b2.bottom())
+
+        if min_x > max_x or min_y > max_y:
+            doc_rect = layout.frameBoundingRect(table)
+            min_x, min_y = doc_rect.x(), doc_rect.y()
+            max_x, max_y = min_x + doc_rect.width(), min_y + doc_rect.height()
+
+        vx = min_x - h_scroll
+        vy = min_y - v_scroll
+        return QRectF(vx, vy, max(20.0, max_x - min_x), max(20.0, max_y - min_y))
 
     def _get_table_col_divider_xs(self, table: QTextTable):
         """Return list of (col_idx, divider_x_in_viewport) for vertical dividers."""
@@ -9814,14 +9854,40 @@ class CellInputEdit(QTextEdit):
         cols = table.columns()
         if cols <= 1:
             return dividers
+        layout = self.document().documentLayout()
+        h_scroll = self.horizontalScrollBar().value()
         for c in range(1, cols):
             try:
                 cell = table.cellAt(0, c)
-                r = self.cursorRect(cell.firstCursorPosition())
-                dividers.append((c - 1, float(r.left() - 4)))
+                b = layout.blockBoundingRect(cell.firstCursorPosition().block())
+                div_x = b.left() - h_scroll - 4.0
+                dividers.append((c - 1, float(div_x)))
             except Exception:
                 pass
         return dividers
+
+    def _constrain_tables_to_viewport(self):
+        """Ensure tables fit within the available viewport width."""
+        tables = self._find_all_tables()
+        if not tables:
+            return
+        vw = float(self.viewport().width() - 24.0)
+        if vw < 120.0:
+            return
+        for tbl in tables:
+            t_rect = self._get_table_geometry(tbl)
+            if t_rect.width() > vw:
+                fmt = tbl.format()
+                scale = vw / max(1.0, t_rect.width())
+                orig_constraints = fmt.columnWidthConstraints()
+                if orig_constraints:
+                    new_constraints = [
+                        QTextLength(QTextLength.Type.FixedLength, max(25.0, c.rawValue() * scale))
+                        for c in orig_constraints
+                    ]
+                    fmt.setColumnWidthConstraints(new_constraints)
+                fmt.setWidth(QTextLength(QTextLength.Type.FixedLength, vw))
+                tbl.setFormat(fmt)
 
     def _get_table_col_widths(self, table: QTextTable):
         """Calculate current pixel widths for all columns of the table."""
@@ -11051,12 +11117,26 @@ class SectionTitleEdit(QTextEdit):
         self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(50)
+        self.setMaximumWidth(16777215)
         self.document().setDocumentMargin(2)
         self.setContentsMargins(0, 0, 0, 0)
         self.textChanged.connect(self._on_text_changed)
         self.selectionChanged.connect(self._on_selection_changed)
         self._update_style()
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(50, 26)
+
+    def sizeHint(self) -> QSize:
+        doc = self.document()
+        h = max(26, int(doc.size().height()) + 4)
+        return QSize(100, h)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._adjust_size()
 
     def text(self) -> str:
         return self.toPlainText()
@@ -11110,25 +11190,16 @@ class SectionTitleEdit(QTextEdit):
         self._adjust_size()
 
     def _adjust_size(self):
-        fm = self.fontMetrics()
-        base_w = fm.horizontalAdvance("0" * 7) + 20
         doc = self.document()
-        avail_w = 99999
-        if self.parent_cell:
-            cell_w = self.parent_cell.width()
-            if cell_w > 100:
-                avail_w = max(120, cell_w - 80)
-
-        doc.setTextWidth(-1)
-        doc.adjustSize()
-        ideal_w = int(doc.idealWidth()) + 24
-        if ideal_w > avail_w:
-            w = avail_w
-            doc.setTextWidth(avail_w - 10)
+        vw = self.viewport().width() if hasattr(self, 'viewport') and self.viewport().width() > 50 else -1
+        if vw > 50:
+            doc.setTextWidth(float(vw))
         else:
-            w = max(base_w, ideal_w)
-        h = max(28, int(doc.size().height()) + 4)
-        self.setFixedSize(w, h)
+            doc.setTextWidth(-1)
+        h = max(26, int(doc.size().height()) + 4)
+        self.setFixedHeight(h)
+        if self.parent_cell:
+            self.parent_cell.updateGeometry()
 
     def _update_style(self):
         if not self.parent_cell:
@@ -11446,6 +11517,7 @@ class SectionHeaderRow(QWidget):
     def __init__(self, parent_cell, parent=None):
         super().__init__(parent)
         self.parent_cell = parent_cell
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -11655,11 +11727,15 @@ class WorksheetCell(QFrame):
 
     def set_editable(self, editable: bool):
         self.is_editable = editable
+        if self._is_lazy:
+            return
         if hasattr(self, 'input_edit') and self.input_edit:
             self.input_edit.set_editable(editable)
 
     def set_theme_mode(self, mode: str):
         self.theme_mode = mode
+        if self._is_lazy:
+            return
         is_dark = (mode == Theme.DARK)
         if hasattr(self, 'lbl_prompt') and self.lbl_prompt:
             prompt_col = Theme.DARK_PROMPT if is_dark else Theme.OPENMATH_PROMPT
@@ -11679,6 +11755,8 @@ class WorksheetCell(QFrame):
 
     def set_cell_selected(self, selected: bool):
         self.is_selected = selected
+        if self._is_lazy:
+            return
         self._update_selection_style()
         if hasattr(self, 'input_edit') and self.input_edit:
             if selected:
@@ -11836,18 +11914,18 @@ class WorksheetCell(QFrame):
     def _ensure_section_header(self):
         if self._section_header_row is None:
             self._section_header_row = SectionHeaderRow(self, parent=self.content_container)
+            self._section_header_row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             self.section_header_layout = QHBoxLayout(self._section_header_row)
             self.section_header_layout.setContentsMargins(0, 4, 4, 4)
             self.section_header_layout.setSpacing(6)
-            self.section_header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self.section_header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
             self._btn_section_toggle = SectionDisclosureWidget(is_collapsed=getattr(self, 'is_collapsed', False), parent=self._section_header_row)
             self._btn_section_toggle.clicked.connect(self.toggle_section_collapsed)
-            self.section_header_layout.addWidget(self._btn_section_toggle)
+            self.section_header_layout.addWidget(self._btn_section_toggle, 0)
 
             self._title_edit = SectionTitleEdit(self, parent=self._section_header_row)
-            self.section_header_layout.addWidget(self._title_edit, 0)
-            self.section_header_layout.addStretch()
+            self.section_header_layout.addWidget(self._title_edit, 1)
 
             self.content_container.layout().insertWidget(0, self._section_header_row)
             self._section_header_row.setVisible(getattr(self, 'is_section_header', False))
@@ -12038,6 +12116,10 @@ class WorksheetCell(QFrame):
     def set_worksheet_mode(self, is_ws_mode: bool):
         """Toggle between traditional Worksheet Mode (with '>' prompt) and Document Mode."""
         self.is_worksheet_mode = is_ws_mode
+        if self._is_lazy:
+            if self._lazy_data:
+                self._lazy_data['is_worksheet_mode'] = is_ws_mode
+            return
         if not getattr(self, 'is_section_header', False):
             has_img = hasattr(self, 'input_edit') and hasattr(self.input_edit, 'embedded_images') and bool(self.input_edit.embedded_images)
             is_text_or_img = (self.input_mode == self.MODE_TEXT) or has_img
@@ -12200,6 +12282,8 @@ class WorksheetCell(QFrame):
         super().showEvent(event)
         if hasattr(self, 'input_edit'):
             self.input_edit._adjust_height()
+        if getattr(self, 'is_section_header', False) and self._title_edit is not None:
+            self._title_edit._adjust_size()
 
     def toggle_input_mode(self):
         """F5 mode toggle: 2D Math -> 1D Math -> Nonexecutable Math -> Text -> 2D Math."""
@@ -12422,6 +12506,8 @@ class WorksheetCell(QFrame):
         except (ValueError, TypeError):
             val = 12
         self.current_font_size = max(1, val)  # Guard: Qt requires point size > 0
+        if self._is_lazy:
+            return
         if hasattr(self, 'input_edit') and self.input_edit:
             self.input_edit.set_font_size(self.current_font_size)
         else:
@@ -12455,30 +12541,36 @@ class WorksheetCell(QFrame):
         except (ValueError, TypeError):
             val = 1.0
         self.current_line_spacing = val
+        if self._is_lazy:
+            return
         if hasattr(self, 'input_edit') and self.input_edit:
             self.input_edit.set_line_spacing(val)
 
     def set_zoom_factor(self, factor: float):
         """Update visual zoom scaling without altering the underlying font size property."""
         self.zoom_factor = max(0.25, min(5.0, factor))
+        if self._is_lazy:
+            return
         self._apply_mode_styling()
-        if hasattr(self, 'math_renderer') and self.math_renderer:
-            self.math_renderer.set_font_size(max(10, self.current_font_size + 3))
-            self.math_renderer.set_zoom_factor(self.zoom_factor)
-        if hasattr(self, 'preview_renderer') and self.preview_renderer:
-            self.preview_renderer.set_font_size(max(10, self.current_font_size + 3))
-            self.preview_renderer.set_zoom_factor(self.zoom_factor)
-        if hasattr(self, 'lbl_eq_label') and self.lbl_eq_label:
+        if self._math_renderer is not None:
+            self._math_renderer.set_font_size(max(10, self.current_font_size + 3))
+            self._math_renderer.set_zoom_factor(self.zoom_factor)
+        if self._preview_renderer is not None:
+            self._preview_renderer.set_font_size(max(10, self.current_font_size + 3))
+            self._preview_renderer.set_zoom_factor(self.zoom_factor)
+        if self._lbl_eq_label is not None:
             fam = getattr(self, 'current_font_family', "Times New Roman") or "Times New Roman"
-            self.lbl_eq_label.setFont(QFont(fam, max(4, round(11 * self.zoom_factor))))
-        if hasattr(self, 'error_box') and self.error_box:
-            self.error_box.setFont(QFont("Consolas", max(4, round(11 * self.zoom_factor)), QFont.Weight.Bold))
+            self._lbl_eq_label.setFont(QFont(fam, max(4, round(11 * self.zoom_factor))))
+        if self._error_box is not None:
+            self._error_box.setFont(QFont("Consolas", max(4, round(11 * self.zoom_factor)), QFont.Weight.Bold))
         if hasattr(self, '_current_plot_canvas') and self._current_plot_canvas:
             self._current_plot_canvas.setFixedSize(int(380 * self.zoom_factor), int(320 * self.zoom_factor))
         self.updateGeometry()
 
     def set_font_family(self, family: str):
         self.current_font_family = family
+        if self._is_lazy:
+            return
         self._apply_mode_styling()
 
     def set_bold(self, bold: bool):
