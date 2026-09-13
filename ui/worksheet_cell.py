@@ -5401,6 +5401,19 @@ class CellInputEdit(QTextEdit):
         pal.setColor(QPalette.ColorGroup.Inactive, QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
         self.setPalette(pal)
 
+        # Image selection & interactive resizing state
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
+        self._selected_image_pos = None
+        self._hovered_image_pos = None
+        self._resizing_image = False
+        self._resize_corner = None
+        self._resize_image_pos = None
+        self._resize_start_mouse = None
+        self._resize_start_w = 100.0
+        self._resize_start_h = 100.0
+        self._resize_ratio = 1.0
+
         init_fmt = self._get_char_format_for_mode(self.current_typing_mode)
         self.setCurrentCharFormat(init_fmt)
         self.math_highlighter = Math2DHighlighter(self)
@@ -5709,7 +5722,7 @@ class CellInputEdit(QTextEdit):
         fmt = QTextImageFormat()
         fmt.setName(img_id)
 
-        target_max_w = max_width or max(200, self.viewport().width() - 40)
+        target_max_w = max_width or max(700, self.viewport().width() - 40)
         if qimg.width() > target_max_w:
             scaled_h = max(20, int(qimg.height() * (target_max_w / qimg.width())))
             fmt.setWidth(target_max_w)
@@ -5720,6 +5733,89 @@ class CellInputEdit(QTextEdit):
 
         cursor.insertImage(fmt)
         self._adjust_height()
+
+        # Switch cell to Text mode so the image is not in a cell / math box
+        parent_cell = getattr(self, 'parent_cell', None)
+        if parent_cell:
+            if hasattr(parent_cell, 'set_input_mode') and hasattr(parent_cell, 'MODE_TEXT'):
+                parent_cell.set_input_mode(parent_cell.MODE_TEXT)
+            if hasattr(parent_cell, 'lbl_prompt'):
+                parent_cell.lbl_prompt.setVisible(False)
+            if hasattr(parent_cell, 'bracket_bar'):
+                parent_cell.bracket_bar.setVisible(False)
+            ws = self._get_worksheet_view() or (parent_cell._get_worksheet_view() if parent_cell else None)
+            if ws:
+                ws.active_cell = parent_cell
+                ws.activeCellChanged.emit(parent_cell)
+
+    def _create_or_focus_math_cell_below(self):
+        """Create or focus a 2D Math execution block below when Enter is pressed in an image cell."""
+        parent_cell = getattr(self, 'parent_cell', None)
+        if not parent_cell:
+            return None
+
+        ws = self._get_worksheet_view() or (parent_cell._get_worksheet_view() if parent_cell else None)
+        if not ws or not hasattr(ws, 'insert_cell_below'):
+            return None
+
+        # Trailing text handling: if cursor was before trailing text, move that text down
+        cursor = self.textCursor()
+        trailing_text = ""
+        if cursor.position() < self.document().characterCount() - 1:
+            trailing_cursor = QTextCursor(self.document())
+            trailing_cursor.setPosition(cursor.position())
+            trailing_cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+            raw_trailing = trailing_cursor.selectedText().replace('\ufffc', '').strip()
+            if raw_trailing:
+                trailing_text = raw_trailing
+                trailing_cursor.removeSelectedText()
+
+        # If next cell exists and is an empty non-section cell, reuse it
+        idx = ws._get_cell_index_by_id(parent_cell.cell_id) if hasattr(ws, '_get_cell_index_by_id') else -1
+        if idx != -1 and idx + 1 < len(ws.cells):
+            next_c = ws.cells[idx + 1]
+            if not getattr(next_c, 'is_section_header', False) and not next_c.get_input_text().strip():
+                math_mode = getattr(next_c, 'MODE_2D_MATH', '2d_math')
+                next_c.set_input_mode(math_mode)
+                next_c.set_worksheet_mode(ws.is_worksheet_mode)
+                if trailing_text:
+                    next_c.set_input_text(trailing_text)
+                    if hasattr(next_c, 'input_edit'):
+                        next_c.input_edit.moveCursor(QTextCursor.MoveOperation.Start)
+                ws.clear_cell_selection()
+                ws.active_cell = next_c
+                ws.activeCellChanged.emit(next_c)
+                next_c.set_cell_focus()
+                return next_c
+
+        # Otherwise insert a fresh math execution block directly below parent_cell
+        new_cell = ws.insert_cell_below(parent_cell.cell_id)
+        if new_cell:
+            math_mode = getattr(new_cell, 'MODE_2D_MATH', '2d_math')
+            new_cell.set_input_mode(math_mode)
+            new_cell.set_worksheet_mode(ws.is_worksheet_mode)
+            if trailing_text:
+                new_cell.set_input_text(trailing_text)
+                if hasattr(new_cell, 'input_edit'):
+                    new_cell.input_edit.moveCursor(QTextCursor.MoveOperation.Start)
+            new_cell.set_cell_selected(False)
+            ws.clear_cell_selection()
+            ws.active_cell = new_cell
+            ws.activeCellChanged.emit(new_cell)
+            new_cell.set_cell_focus()
+
+            def _focus_new():
+                try:
+                    if new_cell and hasattr(new_cell, 'set_cell_focus'):
+                        new_cell.set_cell_focus()
+                except Exception:
+                    pass
+
+            QTimer.singleShot(10, _focus_new)
+            QTimer.singleShot(50, _focus_new)
+            return new_cell
+
+        return None
 
     def _resolve_image_src(self, src: str) -> Optional[QImage]:
         """Resolve an image src (data URI, local img_id, resource, or file path) into a QImage."""
@@ -5931,6 +6027,18 @@ class CellInputEdit(QTextEdit):
                             html = html.replace(src, img_id)
                     self.insertHtml(html)
                     self._adjust_height()
+                    parent_cell = getattr(self, 'parent_cell', None)
+                    if parent_cell:
+                        if hasattr(parent_cell, 'set_input_mode') and hasattr(parent_cell, 'MODE_TEXT'):
+                            parent_cell.set_input_mode(parent_cell.MODE_TEXT)
+                        if hasattr(parent_cell, 'lbl_prompt'):
+                            parent_cell.lbl_prompt.setVisible(False)
+                        if hasattr(parent_cell, 'bracket_bar'):
+                            parent_cell.bracket_bar.setVisible(False)
+                        ws = self._get_worksheet_view() or (parent_cell._get_worksheet_view() if parent_cell else None)
+                        if ws:
+                            ws.active_cell = parent_cell
+                            ws.activeCellChanged.emit(parent_cell)
                     return
 
         if source.hasText():
@@ -6460,12 +6568,23 @@ class CellInputEdit(QTextEdit):
             # Embedded images height check
             if hasattr(self, 'embedded_images') and self.embedded_images:
                 img_h_sum = 0
-                for img_id in self.embedded_images:
-                    res = self.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(img_id))
-                    if res and not res.isNull():
-                        img_h_sum += res.size().height()
+                for ch_pos in range(self.document().characterCount() - 1):
+                    c = QTextCursor(self.document())
+                    c.setPosition(ch_pos)
+                    c.setPosition(ch_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                    if c.charFormat().isImageFormat():
+                        fh = c.charFormat().toImageFormat().height()
+                        if fh > 0:
+                            img_h_sum += int(fh)
                 if img_h_sum > 0:
                     calc_h = max(calc_h, img_h_sum + 16)
+                else:
+                    for img_id in self.embedded_images:
+                        res = self.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(img_id))
+                        if res and not res.isNull():
+                            img_h_sum += res.size().height()
+                    if img_h_sum > 0:
+                        calc_h = max(calc_h, img_h_sum + 16)
 
         new_h = max(line_height + 6, min(4000, calc_h))
         if self.height() != new_h:
@@ -7693,6 +7812,7 @@ class CellInputEdit(QTextEdit):
         super().paintEvent(event)
         self._reposition_fractions()
         self._draw_tall_parentheses()
+        self._draw_image_resize_handles()
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
@@ -8714,6 +8834,11 @@ class CellInputEdit(QTextEdit):
             (event.key() == Qt.Key.Key_Equal and (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) and event.text() != '+')
         )
         if is_inline_eval_trigger:
+            if hasattr(self, 'embedded_images') and self.embedded_images:
+                res = self._create_or_focus_math_cell_below()
+                if res:
+                    event.accept()
+                    return
             if self.get_mode_at_cursor() in (
                 getattr(self.parent_cell, 'MODE_TEXT', 'text'),
                 getattr(self.parent_cell, 'MODE_NONEXEC_MATH', 'nonexec_math')
@@ -8792,6 +8917,11 @@ class CellInputEdit(QTextEdit):
                 return
 
             if is_text_mode:
+                if hasattr(self, 'embedded_images') and self.embedded_images:
+                    res = self._create_or_focus_math_cell_below()
+                    if res:
+                        event.accept()
+                        return
                 cursor.beginEditBlock()
                 if cursor.hasSelection():
                     cursor.removeSelectedText()
@@ -8801,6 +8931,13 @@ class CellInputEdit(QTextEdit):
                 self.ensureCursorVisible()
                 event.accept()
                 return
+
+            # If the cell has an embedded image, pressing Enter creates/advances to a new math box below
+            if hasattr(self, 'embedded_images') and self.embedded_images:
+                res = self._create_or_focus_math_cell_below()
+                if res:
+                    event.accept()
+                    return
 
             # Clean up '= [Plot Object]' if user presses Enter
             if "= [Plot Object]" in self.toPlainText():
@@ -9440,11 +9577,197 @@ class CellInputEdit(QTextEdit):
 
         menu.exec(event.globalPos())
 
+    def _get_image_rect(self, ch_pos: int, img_fmt: QTextImageFormat) -> Optional[QRectF]:
+        """Compute the bounding QRectF of an image in viewport coordinates."""
+        doc = self.document()
+        if ch_pos < 0 or ch_pos >= doc.characterCount() - 1:
+            return None
+        c_start = QTextCursor(doc)
+        c_start.setPosition(ch_pos)
+        c_end = QTextCursor(doc)
+        c_end.setPosition(ch_pos + 1)
+
+        r_start = self.cursorRect(c_start)
+        r_end = self.cursorRect(c_end)
+
+        x = min(r_start.x(), r_end.x())
+        y = min(r_start.y(), r_end.y())
+
+        w = img_fmt.width() if img_fmt.width() > 0 else abs(r_end.x() - r_start.x())
+        h = img_fmt.height() if img_fmt.height() > 0 else max(r_start.height(), r_end.height())
+
+        if w <= 0 or h <= 0:
+            return None
+
+        return QRectF(float(x), float(y), float(w), float(h))
+
+    def _hit_test_corners(self, pos: QPoint, rect: QRectF, radius: float = 12.0) -> Optional[str]:
+        """Test if pos is within radius of any of the 4 corners of rect."""
+        x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+        corners = {
+            'tl': (x, y),
+            'tr': (x + w, y),
+            'bl': (x, y + h),
+            'br': (x + w, y + h),
+        }
+        r2 = radius * radius
+        px, py = float(pos.x()), float(pos.y())
+        for name, (cx, cy) in corners.items():
+            dx = px - cx
+            dy = py - cy
+            if dx * dx + dy * dy <= r2:
+                return name
+        return None
+
+    def _find_image_at_pos(self, pos: QPoint) -> Optional[Tuple[int, QTextImageFormat, QRectF]]:
+        """Find the image character at viewport pos, returning (char_pos, format, rect)."""
+        doc = self.document()
+        if not doc or doc.characterCount() <= 1:
+            return None
+
+        cursor = self.cursorForPosition(pos)
+        p = cursor.position()
+        test_positions = [p, p - 1, p + 1]
+
+        for test_p in test_positions:
+            if 0 <= test_p < doc.characterCount() - 1:
+                c = QTextCursor(doc)
+                c.setPosition(test_p)
+                c.setPosition(test_p + 1, QTextCursor.MoveMode.KeepAnchor)
+                fmt = c.charFormat()
+                if fmt.isImageFormat():
+                    img_rect = self._get_image_rect(test_p, fmt.toImageFormat())
+                    if img_rect and img_rect.adjusted(-6, -6, 6, 6).contains(float(pos.x()), float(pos.y())):
+                        return (test_p, fmt.toImageFormat(), img_rect)
+
+        if hasattr(self, 'embedded_images') and self.embedded_images:
+            for ch_pos in range(doc.characterCount() - 1):
+                c = QTextCursor(doc)
+                c.setPosition(ch_pos)
+                c.setPosition(ch_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                fmt = c.charFormat()
+                if fmt.isImageFormat():
+                    img_rect = self._get_image_rect(ch_pos, fmt.toImageFormat())
+                    if img_rect and img_rect.adjusted(-6, -6, 6, 6).contains(float(pos.x()), float(pos.y())):
+                        return (ch_pos, fmt.toImageFormat(), img_rect)
+        return None
+
+    def _draw_image_resize_handles(self):
+        """Draw bounding box and 4 corner resize handles for active/selected/hovered image."""
+        active_pos = getattr(self, '_selected_image_pos', None)
+        if active_pos is None:
+            active_pos = getattr(self, '_hovered_image_pos', None)
+        if active_pos is None:
+            return
+
+        doc = self.document()
+        if not (0 <= active_pos < doc.characterCount() - 1):
+            return
+
+        c = QTextCursor(doc)
+        c.setPosition(active_pos)
+        c.setPosition(active_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+        fmt = c.charFormat()
+        if not fmt.isImageFormat():
+            return
+
+        img_rect = self._get_image_rect(active_pos, fmt.toImageFormat())
+        if not img_rect:
+            return
+
+        p = QPainter(self.viewport())
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        is_dark = bool(self.parent_cell and getattr(self.parent_cell, 'theme_mode', 'light') == 'dark')
+        border_col = QColor("#2563eb") if not is_dark else QColor("#60a5fa")
+
+        # 1. Selection border outline
+        pen = QPen(border_col, 1.5, Qt.PenStyle.SolidLine)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(img_rect)
+
+        # 2. 4 corner handles
+        handle_size = 9.0
+        half = handle_size / 2.0
+        x = img_rect.x()
+        y = img_rect.y()
+        w = img_rect.width()
+        h = img_rect.height()
+
+        corners = [
+            (x, y),          # Top-Left
+            (x + w, y),      # Top-Right
+            (x, y + h),      # Bottom-Left
+            (x + w, y + h),  # Bottom-Right
+        ]
+
+        handle_pen = QPen(border_col, 1.5, Qt.PenStyle.SolidLine)
+        handle_fill = QBrush(QColor("#ffffff") if not is_dark else QColor("#1e293b"))
+        p.setPen(handle_pen)
+        p.setBrush(handle_fill)
+
+        for cx, cy in corners:
+            h_rect = QRectF(cx - half, cy - half, handle_size, handle_size)
+            p.drawRoundedRect(h_rect, 2.0, 2.0)
+
+        p.end()
+
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        if getattr(self, '_hovered_image_pos', None) is not None and getattr(self, '_selected_image_pos', None) is None:
+            self._hovered_image_pos = None
+            self.viewport().unsetCursor()
+            self.viewport().update()
+
     def mousePressEvent(self, event):
         self._subscript_active = False
         self._superscript_active = False
         self._drag_start_global_pos = event.globalPosition().toPoint() if hasattr(event, 'globalPosition') else event.globalPos()
         self._is_cross_cell_drag = False
+
+        # 1. Check if clicking on an image corner resize handle
+        if event.button() == Qt.MouseButton.LeftButton:
+            active_pos = getattr(self, '_selected_image_pos', None)
+            if active_pos is None:
+                active_pos = getattr(self, '_hovered_image_pos', None)
+            if active_pos is None:
+                found = self._find_image_at_pos(event.pos())
+                if found:
+                    active_pos = found[0]
+
+            if active_pos is not None and (0 <= active_pos < self.document().characterCount() - 1):
+                c = QTextCursor(self.document())
+                c.setPosition(active_pos)
+                c.setPosition(active_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                fmt = c.charFormat()
+                if fmt.isImageFormat():
+                    img_fmt = fmt.toImageFormat()
+                    img_rect = self._get_image_rect(active_pos, img_fmt)
+                    if img_rect:
+                        corner = self._hit_test_corners(event.pos(), img_rect)
+                        if corner:
+                            self._resizing_image = True
+                            self._resize_corner = corner
+                            self._resize_image_pos = active_pos
+                            self._resize_start_mouse = event.pos()
+                            self._resize_start_w = img_fmt.width() if img_fmt.width() > 0 else img_rect.width()
+                            self._resize_start_h = img_fmt.height() if img_fmt.height() > 0 else img_rect.height()
+
+                            # Determine intrinsic aspect ratio from QImage resource or start size
+                            src_name = img_fmt.name()
+                            res = self.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(src_name))
+                            if res and not res.isNull() and res.size().width() > 0 and res.size().height() > 0:
+                                self._resize_ratio = float(res.size().width()) / float(res.size().height())
+                            elif self._resize_start_h > 0:
+                                self._resize_ratio = float(self._resize_start_w) / float(self._resize_start_h)
+                            else:
+                                self._resize_ratio = 1.0
+
+                            self._selected_image_pos = active_pos
+                            self.viewport().update()
+                            event.accept()
+                            return
 
         ws = self._get_worksheet_view()
         if event.button() == Qt.MouseButton.LeftButton and ws:
@@ -9463,30 +9786,112 @@ class CellInputEdit(QTextEdit):
                     ws.clear_cell_selection()
 
         super().mousePressEvent(event)
-        if event.button() == Qt.MouseButton.LeftButton and not self.textCursor().hasSelection():
-            cursor = self.cursorForPosition(event.pos())
-            p = cursor.position()
-            for test_p in [p, p - 1]:
-                if 0 <= test_p < self.document().characterCount() - 1:
-                    c_test = QTextCursor(self.document())
-                    c_test.setPosition(test_p)
-                    c_test.setPosition(test_p + 1, QTextCursor.MoveMode.KeepAnchor)
-                    if c_test.charFormat().isImageFormat():
-                        c_start = QTextCursor(self.document())
-                        c_start.setPosition(test_p)
-                        c_end = QTextCursor(self.document())
-                        c_end.setPosition(test_p + 1)
-                        r_start = self.cursorRect(c_start)
-                        r_end = self.cursorRect(c_end)
-                        x_min = min(r_start.x(), r_end.x())
-                        x_max = max(r_start.x(), r_end.x())
-                        y_min = min(r_start.y(), r_end.y())
-                        y_max = max(r_start.bottom(), r_end.bottom())
-                        if x_min <= event.pos().x() <= x_max and y_min <= event.pos().y() <= y_max:
-                            self.setTextCursor(c_test)
-                            break
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check if clicked on an image directly
+            found = self._find_image_at_pos(event.pos())
+            if found:
+                img_pos, img_fmt, img_rect = found
+                self._selected_image_pos = img_pos
+                c_test = QTextCursor(self.document())
+                c_test.setPosition(img_pos)
+                c_test.setPosition(img_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                self.setTextCursor(c_test)
+                self.viewport().update()
+            else:
+                if getattr(self, '_selected_image_pos', None) is not None:
+                    self._selected_image_pos = None
+                    self.viewport().update()
 
     def mouseMoveEvent(self, event):
+        # 1. Handle active image resizing from any corner without stretching
+        if getattr(self, '_resizing_image', False):
+            corner = getattr(self, '_resize_corner', 'br')
+            dx = event.pos().x() - self._resize_start_mouse.x()
+            dy = event.pos().y() - self._resize_start_mouse.y()
+            ratio = getattr(self, '_resize_ratio', 1.0)
+            start_w = getattr(self, '_resize_start_w', 100.0)
+
+            # Symmetrical displacement for all 4 corners
+            if corner == 'br':
+                delta_x = dx
+                delta_y = dy * ratio
+            elif corner == 'tr':
+                delta_x = dx
+                delta_y = -dy * ratio
+            elif corner == 'bl':
+                delta_x = -dx
+                delta_y = dy * ratio
+            elif corner == 'tl':
+                delta_x = -dx
+                delta_y = -dy * ratio
+            else:
+                delta_x = dx
+                delta_y = dy * ratio
+
+            delta = delta_x if abs(delta_x) >= abs(delta_y) else delta_y
+            max_w = max(700, self.viewport().width() - 40)
+            new_w = max(40.0, min(float(max_w), start_w + delta))
+            new_h = max(20.0, new_w / ratio)
+
+            # Update format in document
+            pos = getattr(self, '_resize_image_pos', None)
+            if pos is not None and 0 <= pos < self.document().characterCount() - 1:
+                c = QTextCursor(self.document())
+                c.setPosition(pos)
+                c.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                fmt = c.charFormat()
+                if fmt.isImageFormat():
+                    img_fmt = fmt.toImageFormat()
+                    img_fmt.setWidth(new_w)
+                    img_fmt.setHeight(new_h)
+                    c.setCharFormat(img_fmt)
+                    self._adjust_height()
+                    self.viewport().update()
+
+            event.accept()
+            return
+
+        # 2. Hover detection and cursor shape update for corner handles
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
+            active_pos = getattr(self, '_selected_image_pos', None)
+            if active_pos is None:
+                found = self._find_image_at_pos(event.pos())
+                if found:
+                    active_pos = found[0]
+                    if getattr(self, '_hovered_image_pos', None) != active_pos:
+                        self._hovered_image_pos = active_pos
+                        self.viewport().update()
+                else:
+                    if getattr(self, '_hovered_image_pos', None) is not None:
+                        self._hovered_image_pos = None
+                        self.viewport().update()
+
+            if active_pos is not None and (0 <= active_pos < self.document().characterCount() - 1):
+                c = QTextCursor(self.document())
+                c.setPosition(active_pos)
+                c.setPosition(active_pos + 1, QTextCursor.MoveMode.KeepAnchor)
+                fmt = c.charFormat()
+                if fmt.isImageFormat():
+                    img_rect = self._get_image_rect(active_pos, fmt.toImageFormat())
+                    if img_rect:
+                        corner = self._hit_test_corners(event.pos(), img_rect)
+                        if corner in ('tl', 'br'):
+                            self.viewport().setCursor(Qt.CursorShape.SizeFDiagCursor)
+                        elif corner in ('tr', 'bl'):
+                            self.viewport().setCursor(Qt.CursorShape.SizeBDiagCursor)
+                        elif img_rect.contains(float(event.pos().x()), float(event.pos().y())):
+                            self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                        else:
+                            self.viewport().unsetCursor()
+                    else:
+                        self.viewport().unsetCursor()
+                else:
+                    self.viewport().unsetCursor()
+            else:
+                self.viewport().unsetCursor()
+
+        # 3. Cross-cell drag selection
         if (event.buttons() & Qt.MouseButton.LeftButton) and hasattr(self, '_drag_start_global_pos') and self._drag_start_global_pos is not None:
             ws = self._get_worksheet_view()
             if ws and hasattr(ws, 'container') and ws.container and hasattr(self, 'parent_cell') and self.parent_cell in ws.cells:
@@ -9521,6 +9926,13 @@ class CellInputEdit(QTextEdit):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if getattr(self, '_resizing_image', False):
+            self._resizing_image = False
+            self.viewport().unsetCursor()
+            self._adjust_height()
+            self.viewport().update()
+            event.accept()
+            return
         if getattr(self, '_is_cross_cell_drag', False):
             self._is_cross_cell_drag = False
             event.accept()
@@ -10991,8 +11403,11 @@ class WorksheetCell(QFrame):
         """Toggle between traditional Worksheet Mode (with '>' prompt) and Document Mode."""
         self.is_worksheet_mode = is_ws_mode
         if not getattr(self, 'is_section_header', False):
-            self.lbl_prompt.setVisible(is_ws_mode)
-            self.bracket_bar.setVisible(is_ws_mode)
+            has_img = hasattr(self, 'input_edit') and hasattr(self.input_edit, 'embedded_images') and bool(self.input_edit.embedded_images)
+            is_text_or_img = (self.input_mode == self.MODE_TEXT) or has_img
+            show_prompt = is_ws_mode and not is_text_or_img
+            self.lbl_prompt.setVisible(show_prompt)
+            self.bracket_bar.setVisible(show_prompt)
         else:
             self.lbl_prompt.setVisible(False)
             self.bracket_bar.setVisible(False)
@@ -11232,12 +11647,21 @@ class WorksheetCell(QFrame):
                             fid = fmt.property(PROP_FRAC_ID)
                             if fid and hasattr(self.input_edit, 'frac_widgets') and fid in self.input_edit.frac_widgets:
                                 line_parts.append(self.input_edit.frac_widgets[fid].text_expression())
+                                has_executable = True
                             else:
                                 expr = fmt.property(PROP_MATH_EXPR)
                                 if expr:
                                     line_parts.append(str(expr))
+                                    has_executable = True
                                 else:
-                                    line_parts.append(frag.text())
+                                    img_name = fmt.toImageFormat().name()
+                                    is_embedded_pic = (
+                                        hasattr(self.input_edit, 'embedded_images') and
+                                        img_name in self.input_edit.embedded_images
+                                    ) or frag.text() == '\ufffc'
+                                    if not is_embedded_pic:
+                                        line_parts.append(frag.text())
+                                        has_executable = True
                             prev_level = 0
                         else:
                             level = fmt.property(PROP_SUBSCRIPT_LEVEL) or 0
@@ -11247,7 +11671,7 @@ class WorksheetCell(QFrame):
                                     line_parts.append("_")
                             line_parts.append(text)
                             prev_level = level
-                        has_executable = True
+                            has_executable = True
                 it += 1
             math_lines.append("".join(line_parts))
             block = block.next()
@@ -11294,6 +11718,19 @@ class WorksheetCell(QFrame):
         fam = getattr(self, 'current_font_family', "Times New Roman") or "Times New Roman"
         factor = getattr(self, 'zoom_factor', 1.0)
         display_sz = max(4, round(sz * factor))
+
+        has_img = hasattr(self, 'input_edit') and hasattr(self.input_edit, 'embedded_images') and bool(self.input_edit.embedded_images)
+        is_text_or_img = (mode == self.MODE_TEXT) or has_img
+        if is_text_or_img:
+            if hasattr(self, 'lbl_prompt'):
+                self.lbl_prompt.setVisible(False)
+            if hasattr(self, 'bracket_bar'):
+                self.bracket_bar.setVisible(False)
+        elif getattr(self, 'is_worksheet_mode', False) and not getattr(self, 'is_section_header', False):
+            if hasattr(self, 'lbl_prompt'):
+                self.lbl_prompt.setVisible(True)
+            if hasattr(self, 'bracket_bar'):
+                self.bracket_bar.setVisible(True)
 
         if mode == self.MODE_2D_MATH:
             prompt_font = QFont(fam, display_sz, QFont.Weight.Bold)
@@ -12840,12 +13277,23 @@ class WorksheetCell(QFrame):
                             qh = res.size().height()
                             max_w = 700
                             w_m = re.search(r'width=["\']?(\d+)', tag)
-                            if w_m:
+                            h_m = re.search(r'height=["\']?(\d+)', tag)
+                            if w_m and h_m:
                                 cur_w = int(w_m.group(1))
+                                cur_h = int(h_m.group(1))
+                                ratio_tag = cur_w / max(1, cur_h)
+                                ratio_real = qw / max(1, qh)
+                                # Auto-heal legacy 480x320 hardcoded bug or distorted aspect ratios
+                                if (cur_w == 480 and cur_h == 320 and (qw, qh) != (480, 320)) or abs(ratio_tag - ratio_real) > 0.05:
+                                    cur_h = max(20, int(cur_w / ratio_real))
                                 if cur_w > max_w:
                                     cur_h = max(20, int(qh * (max_w / max(1, qw))))
-                                    return f'<img src="{src_id}" width="{max_w}" height="{cur_h}"/>'
-                                return tag
+                                    cur_w = max_w
+                                return f'<img src="{src_id}" width="{cur_w}" height="{cur_h}"/>'
+                            elif w_m:
+                                cur_w = min(int(w_m.group(1)), max_w)
+                                cur_h = max(20, int(qh * (cur_w / max(1, qw))))
+                                return f'<img src="{src_id}" width="{cur_w}" height="{cur_h}"/>'
                             else:
                                 disp_w = min(qw, max_w)
                                 disp_h = max(20, int(qh * (disp_w / max(1, qw))))

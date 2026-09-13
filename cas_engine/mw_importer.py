@@ -212,13 +212,7 @@ class WorksheetIO:
                         img_id = f"img_{uuid.uuid4().hex[:8]}"
                         raw_w = int(img.attrib.get('width', '500'))
                         raw_h = int(img.attrib.get('height', '350'))
-                        max_w = 700
-                        if raw_w > max_w:
-                            img_h = max(20, int(raw_h * (max_w / raw_w)))
-                            img_w = max_w
-                        else:
-                            img_w = raw_w
-                            img_h = raw_h
+                        img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
                         img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
                         cell = {
                             'cell_id': str(uuid.uuid4())[:8],
@@ -366,13 +360,7 @@ class WorksheetIO:
                                 img_id = f"img_{uuid.uuid4().hex[:8]}"
                                 raw_w = int(img.attrib.get('width', '500'))
                                 raw_h = int(img.attrib.get('height', '350'))
-                                max_w = 700
-                                if raw_w > max_w:
-                                    img_h = max(20, int(raw_h * (max_w / raw_w)))
-                                    img_w = max_w
-                                else:
-                                    img_w = raw_w
-                                    img_h = raw_h
+                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
                                 img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
                                 cell = {
                                     'cell_id': str(uuid.uuid4())[:8],
@@ -543,6 +531,101 @@ class WorksheetIO:
         return False
 
     @classmethod
+    def _extract_image_dimensions_from_bytes(cls, img_bytes: bytes) -> Tuple[Optional[int], Optional[int]]:
+        """Extract native pixel dimensions (w, h) from raw image bytes (PNG, JPEG, GIF, BMP)."""
+        if not img_bytes:
+            return None, None
+        if img_bytes.startswith(b'\x89PNG\r\n\x1a\n') and len(img_bytes) >= 24:
+            import struct
+            w, h = struct.unpack('>II', img_bytes[16:24])
+            if w > 0 and h > 0:
+                return w, h
+        if img_bytes.startswith(b'GIF8') and len(img_bytes) >= 10:
+            import struct
+            w, h = struct.unpack('<HH', img_bytes[6:10])
+            if w > 0 and h > 0:
+                return w, h
+        if img_bytes.startswith(b'BM') and len(img_bytes) >= 26:
+            import struct
+            w, h = struct.unpack('<II', img_bytes[18:26])
+            if w > 0 and h > 0:
+                return w, h
+        try:
+            from PyQt6.QtGui import QImage
+            qimg = QImage()
+            if qimg.loadFromData(img_bytes):
+                return qimg.width(), qimg.height()
+        except Exception:
+            pass
+        return None, None
+
+    @classmethod
+    def _calculate_display_dimensions(cls, raw_w: int, raw_h: int, img_bytes: bytes, max_w: int = 700) -> Tuple[int, int]:
+        """Calculate display (w, h) for an image while strictly preserving true aspect ratio."""
+        true_w, true_h = cls._extract_image_dimensions_from_bytes(img_bytes)
+        if true_w and true_h and true_w > 0 and true_h > 0:
+            true_ratio = true_w / true_h
+            attr_ratio = raw_w / max(1, raw_h)
+            # Detect legacy hardcoded 480x320 or distorted aspect ratio
+            if (raw_w == 480 and raw_h == 320 and (true_w, true_h) != (480, 320)) or abs(true_ratio - attr_ratio) > 0.05:
+                raw_w = min(true_w, max_w)
+                raw_h = max(20, int(true_h * (raw_w / true_w)))
+            else:
+                if raw_w > max_w:
+                    raw_h = max(20, int(true_h * (max_w / true_w)))
+                    raw_w = max_w
+                else:
+                    raw_h = max(20, int(true_h * (raw_w / true_w)))
+            return raw_w, raw_h
+
+        if raw_w > max_w:
+            img_h = max(20, int(raw_h * (max_w / max(1, raw_w))))
+            img_w = max_w
+        else:
+            img_w = raw_w
+            img_h = raw_h
+        return img_w, img_h
+
+    @classmethod
+    def _get_save_image_dimensions(cls, b64_data: str, input_text: str, img_id: str) -> Tuple[int, int]:
+        """Determine proportional (w, h) for an embedded image when saving to .mw."""
+        import base64
+        try:
+            raw = base64.b64decode(b64_data)
+        except Exception:
+            raw = b""
+
+        orig_w, orig_h = cls._extract_image_dimensions_from_bytes(raw)
+
+        # Check if input HTML has explicit width and height for this image tag
+        if input_text:
+            m = re.search(rf'<img[^>]+src=["\']{re.escape(img_id)}["\'][^>]*>', input_text, re.IGNORECASE)
+            if m:
+                tag = m.group(0)
+                wm = re.search(r'width=["\']?(\d+)', tag)
+                hm = re.search(r'height=["\']?(\d+)', tag)
+                if wm and hm:
+                    html_w = int(wm.group(1))
+                    html_h = int(hm.group(1))
+                    if html_w > 0 and html_h > 0:
+                        if orig_w and orig_h and orig_w > 0 and orig_h > 0:
+                            ratio_html = html_w / html_h
+                            ratio_orig = orig_w / orig_h
+                            if abs(ratio_html - ratio_orig) <= 0.05:
+                                return html_w, html_h
+                            else:
+                                return html_w, max(20, int(html_w * orig_h / orig_w))
+                        return html_w, html_h
+
+        if orig_w and orig_h and orig_w > 0 and orig_h > 0:
+            max_w = 700
+            if orig_w > max_w:
+                return max_w, max(20, int(orig_h * (max_w / orig_w)))
+            return orig_w, orig_h
+
+        return 500, 350
+
+    @classmethod
     def save_mw_string(cls, cells: List[Dict[str, Any]]) -> str:
         """Serialize cell dictionaries into a valid .mw XML document."""
         root = ET.Element("Worksheet")
@@ -590,13 +673,25 @@ class WorksheetIO:
             inp = ET.SubElement(group, "Input")
 
             if embedded_imgs:
-                # Embedded image
+                # If there's surrounding text in this cell, preserve it
+                clean_txt = re.sub(r'<style[^>]*>.*?</style>', '', input_text, flags=re.DOTALL | re.IGNORECASE)
+                clean_txt = re.sub(r'<head[^>]*>.*?</head>', '', clean_txt, flags=re.DOTALL | re.IGNORECASE)
+                clean_txt = re.sub(r'<img[^>]*>', '', clean_txt, flags=re.IGNORECASE)
+                clean_txt = re.sub(r'<[^>]+>', '', clean_txt).strip()
+                if clean_txt:
+                    tf_text = ET.SubElement(inp, "Text-field")
+                    tf_text.attrib["style"] = "Text"
+                    tf_text.attrib["layout"] = "Normal"
+                    tf_text.text = clean_txt
+
+                # Embedded images with exact proportional dimensions
                 for img_id, b64_data in embedded_imgs.items():
+                    w, h = cls._get_save_image_dimensions(b64_data, input_text, img_id)
                     tf = ET.SubElement(inp, "Text-field")
                     tf.attrib["style"] = "Text"
                     img_node = ET.SubElement(tf, "Image")
-                    img_node.attrib["width"] = "480"
-                    img_node.attrib["height"] = "320"
+                    img_node.attrib["width"] = str(w)
+                    img_node.attrib["height"] = str(h)
                     img_node.text = b64_data
 
             elif inp_mode == cls.MODE_TEXT:

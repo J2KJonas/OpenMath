@@ -123,71 +123,44 @@ def wheeler_decompress(data_str: str) -> bytes:
     bits_read = 6
     remaining_bits = 0
     buf_byte = 0
-
+    ch = 0
+    data_str = data_str.strip()
+    
+    countdown = -1
     out = bytearray()
     
-    # Pre-fill lookup table with identities 0..255
-    for i in range(256):
-        lookup[i] = i
-    
-    idx = 256
-    while instream.getch():
-        ch = instream.current_char
-        if ch > 255:
-            break
+    while countdown != 0:
+        if bits_read == 6:
+            if not instream.input_char():
+                break
+            ch = instream.current_char
+            if 48 <= ch < 58:  # '0' <= ch < ':'
+                countdown = (ch - 48) + 1
+                countdown -= 1
+                continue
+            else:
+                bits_read = 0
+                ch -= 58
         
-        # Read variable-length encoded codes
-        code = 0
-        countdown = bits_read
-        while countdown > 0:
-            if remaining_bits == 0:
-                if not instream.getch():
-                    break
-                buf_byte = instream.current_char
-                remaining_bits = 8
-            
-            code |= (buf_byte & 1) << (bits_read - countdown)
-            buf_byte >>= 1
+        if remaining_bits > 0:
+            buf_byte |= ((ch & 1) << (8 - remaining_bits))
             remaining_bits -= 1
-            countdown -= 1
-        
-        if code > idx:
-            break
-        elif code == idx:
-            # Code equals current table index: reconstruct
-            entry = [prev & 0xFF]
-            p = prev
-            while p > 255:
-                entry.append(lookup[p] & 0xFF)
-                p >>= 12
-            entry.reverse()
-            entry.append(entry[0])
-            out.extend(entry)
-            lookup[idx] = (prev << 12) | entry[0]
-            prev = code
+            if remaining_bits == 0:
+                out.append(buf_byte & 0xFF)
+                lookup[prev] = buf_byte & 0xFF
+                prev = sling_hash(buf_byte & 0xFF, prev)
         else:
-            # Code is in lookup table
-            entry = []
-            p = code
-            while p > 255:
-                entry.append(lookup[p] & 0xFF)
-                p >>= 12
-            entry.append(lookup[p] & 0xFF)
-            entry.reverse()
-            out.extend(entry)
-            if prev != 0:
-                lookup[idx] = (prev << 12) | entry[0]
-            prev = code
-        
-        idx += 1
-        if idx >= 4095:
-            # Reset table
-            idx = 256
-            bits_read = 6
-            for i in range(256):
-                lookup[i] = i
-        elif idx >= (1 << bits_read):
-            bits_read += 1
+            if (ch & 1) > 0:
+                buf_byte = 0
+                remaining_bits = 8
+            else:
+                buf_byte = lookup[prev]
+                out.append(buf_byte & 0xFF)
+                prev = sling_hash(buf_byte & 0xFF, prev)
+                
+        ch >>= 1
+        bits_read += 1
+        countdown -= 1
 
     return bytes(out)
 
@@ -212,14 +185,25 @@ def decode_worksheet_image(raw_content: str) -> bytes:
     try:
         decoded_chars = worksheet_base64_decode(cleaned)
         image_bytes = wheeler_decompress(decoded_chars)
-        if image_bytes.startswith(b'\x89PNG') or image_bytes.startswith(b'\xff\xd8'):
+        if image_bytes.startswith(b'\x89PNG') or image_bytes.startswith(b'\xff\xd8') or image_bytes.startswith(b'GIF8') or image_bytes.startswith(b'BM'):
             return image_bytes
     except Exception:
         pass
 
-    # Direct base64 fallback
+    # Direct base64 fallback (only return if valid image format)
     try:
         import base64
-        return base64.b64decode(cleaned)
+        direct = base64.b64decode(cleaned)
+        if direct.startswith(b'\x89PNG') or direct.startswith(b'\xff\xd8') or direct.startswith(b'GIF8') or direct.startswith(b'BM'):
+            return direct
     except Exception:
-        return b""
+        pass
+
+    return b""
+
+
+# Backwards compatibility aliases
+maple_base64_decode = worksheet_base64_decode
+maple_base64_encode = worksheet_base64_encode
+decode_maple_image = decode_worksheet_image
+

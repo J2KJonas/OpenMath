@@ -477,7 +477,169 @@ class TestWorksheetFeatures(unittest.TestCase):
         self.assertFalse(c2.is_inside_section)
         self.assertFalse(c2.is_worksheet_mode)
 
+    def test_wheeler_image_decompression(self):
+        from cas_engine.wheeler import decode_worksheet_image, wheeler_decompress, worksheet_base64_decode
+        from cas_engine.mw_importer import WorksheetIO
+        from ui.worksheet_cell import WorksheetCell
+        from PyQt6.QtGui import QTextDocument
+        from PyQt6.QtCore import QUrl
+        import os
+
+        # Test with user exam file if present
+        exam_path = '/Users/pc/Desktop/Communication - Exam - Jacob - 2023.mw'
+        if os.path.isfile(exam_path):
+            cells = WorksheetIO.load_mw_file(exam_path)
+            img_cells = [c for c in cells if c.get('embedded_images')]
+            self.assertGreater(len(img_cells), 0)
+            c = img_cells[0]
+            cell = WorksheetCell()
+            cell.from_dict(c)
+            img_id = list(c['embedded_images'].keys())[0]
+            res = cell.input_edit.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(img_id))
+            self.assertIsNotNone(res)
+            self.assertFalse(res.isNull())
+            self.assertGreater(res.size().width(), 0)
+            self.assertGreater(res.size().height(), 0)
+
+    def test_image_aspect_ratio_preservation_roundtrip(self):
+        from cas_engine.mw_importer import WorksheetIO
+        from ui.worksheet_cell import WorksheetCell
+        from PyQt6.QtGui import QImage
+        from PyQt6.QtCore import QMimeData
+        import re
+
+        # Create a tall narrow image (aspect ratio 1:2)
+        tall_img = QImage(200, 400, QImage.Format.Format_RGB32)
+        cell = WorksheetCell()
+        cell.set_input_mode(WorksheetCell.MODE_TEXT)
+        cell.set_input_text("potato : ")
+        mime = QMimeData()
+        mime.setImageData(tall_img)
+        cell.input_edit.insertFromMimeData(mime)
+        d = cell.to_dict()
+
+        # Save to .mw XML
+        xml = WorksheetIO.save_mw_string([d])
+        self.assertNotIn('width="480" height="320"', xml)
+
+        # Load back from .mw XML
+        loaded = WorksheetIO.load_mw_string(xml)
+        self.assertGreaterEqual(len(loaded), 1)
+        img_cell_data = [c for c in loaded if c.get('embedded_images')][0]
+        restored_cell = WorksheetCell()
+        restored_cell.from_dict(img_cell_data)
+
+        m = re.search(r'<img[^>]+>', restored_cell.input_edit.toHtml())
+        self.assertIsNotNone(m)
+        wm = int(re.search(r'width=["\']?(\d+)', m.group(0)).group(1))
+        hm = int(re.search(r'height=["\']?(\d+)', m.group(0)).group(1))
+        # Aspect ratio must match 200/400 = 0.5
+        self.assertAlmostEqual(wm / hm, 200 / 400, delta=0.05)
+
+    def test_interactive_image_resize_all_corners(self):
+        from ui.worksheet_cell import WorksheetCell
+        from PyQt6.QtGui import QImage, QTextCursor, QMouseEvent
+        from PyQt6.QtCore import QMimeData, QPoint, QPointF, Qt, QEvent
+
+        cell = WorksheetCell()
+        img = QImage(200, 400, QImage.Format.Format_RGB32)
+        mime = QMimeData()
+        mime.setImageData(img)
+        cell.input_edit.insertFromMimeData(mime)
+        cell.show()
+
+        edit = cell.input_edit
+
+        # Test both enlarging and shrinking across all 4 corners
+        test_cases = [
+            ('br', 40, 80),
+            ('tr', 30, -60),
+            ('bl', -25, 50),
+            ('tl', -35, -70),
+            ('br', -30, -60),
+            ('tr', -20, 40),
+            ('bl', 20, -40),
+            ('tl', 30, 60),
+        ]
+
+        for corner, move_x, move_y in test_cases:
+            c_fmt = edit.document().firstBlock().begin().fragment().charFormat().toImageFormat()
+            img_rect = edit._get_image_rect(0, c_fmt)
+            if corner == 'tl':
+                pt = QPoint(int(img_rect.left()), int(img_rect.top()))
+            elif corner == 'tr':
+                pt = QPoint(int(img_rect.right()), int(img_rect.top()))
+            elif corner == 'bl':
+                pt = QPoint(int(img_rect.left()), int(img_rect.bottom()))
+            elif corner == 'br':
+                pt = QPoint(int(img_rect.right()), int(img_rect.bottom()))
+
+            press_ev = QMouseEvent(QEvent.Type.MouseButtonPress, QPointF(pt), Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+            edit.mousePressEvent(press_ev)
+            self.assertTrue(edit._resizing_image)
+            self.assertEqual(edit._resize_corner, corner)
+
+            move_ev = QMouseEvent(QEvent.Type.MouseMove, QPointF(pt.x() + move_x, pt.y() + move_y), Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+            edit.mouseMoveEvent(move_ev)
+
+            c = QTextCursor(edit.document())
+            c.setPosition(0)
+            c.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+            fmt = c.charFormat().toImageFormat()
+            self.assertAlmostEqual(fmt.width() / fmt.height(), 200 / 400, delta=0.01)
+
+            rel_ev = QMouseEvent(QEvent.Type.MouseButtonRelease, QPointF(pt.x() + move_x, pt.y() + move_y), Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+            edit.mouseReleaseEvent(rel_ev)
+            self.assertFalse(edit._resizing_image)
+
+
+    def test_image_insertion_creates_separated_math_cell_below(self):
+        """Verify inserting an image keeps it in text mode without a math box, and pressing Enter creates a new 2D Math box."""
+        from ui.worksheet_view import WorksheetView
+        from PyQt6.QtGui import QImage, QColor, QKeyEvent
+        from PyQt6.QtCore import QMimeData, Qt
+
+        ws = WorksheetView(self.engine)
+        self.assertEqual(len(ws.cells), 1)
+        first_cell = ws.cells[0]
+        ws.active_cell = first_cell
+
+        # Paste / insert an image into the first cell
+        img = QImage(240, 160, QImage.Format.Format_RGB32)
+        img.fill(QColor(0, 200, 100))
+        mime = QMimeData()
+        mime.setImageData(img)
+        first_cell.input_edit.insertFromMimeData(mime)
+
+        # 1. First cell has the image, switches to MODE_TEXT, and prompt/bracket are hidden (not in a math box)
+        self.assertEqual(len(first_cell.input_edit.embedded_images), 1)
+        self.assertEqual(first_cell.input_mode, first_cell.MODE_TEXT)
+        self.assertFalse(first_cell.lbl_prompt.isVisible())
+        self.assertFalse(first_cell.bracket_bar.isVisible())
+
+        # 2. Before pressing Enter, only 1 cell exists
+        self.assertEqual(len(ws.cells), 1)
+
+        # 3. User presses Enter after inserting the image
+        enter_ev = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+        first_cell.input_edit.keyPressEvent(enter_ev)
+
+        # 4. Now a new cell has been created directly below
+        self.assertEqual(len(ws.cells), 2)
+        new_cell = ws.cells[1]
+
+        # 5. New cell is in 2D Math mode and is the active cell
+        self.assertEqual(new_cell.input_mode, new_cell.MODE_2D_MATH)
+        self.assertEqual(ws.active_cell, new_cell)
+
+        # 6. First cell does not produce rogue executable math from the image
+        self.assertEqual(first_cell.get_executable_text(), "")
+
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+
 
