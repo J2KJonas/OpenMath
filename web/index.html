@@ -68,19 +68,21 @@
     </div>
 
     <div class="header-right">
-      <input type="file" id="file-import-input" accept="*/*" style="position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px;" />
-
       <button id="btn-add-cell-top" class="header-btn desktop-only" title="New Calculation Cell">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>Add Cell</span>
       </button>
 
-      <label id="btn-import-desktop" for="file-import-input" class="header-btn desktop-only" title="Import Worksheet" role="button" tabindex="0">
+      <!-- Desktop Import (Physical file input overlay over entire button) -->
+      <label id="btn-import-desktop" class="header-btn desktop-only file-btn-wrapper" title="Import Worksheet">
+        <input type="file" class="file-import-input" accept="*/*" title="Import Worksheet" />
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <span>Import</span>
       </label>
 
-      <label id="btn-import-mobile" for="file-import-input" class="icon-btn mobile-only" title="Import" aria-label="Import" role="button" tabindex="0">
+      <!-- Mobile Import (Physical file input overlay over entire touch icon) -->
+      <label id="btn-import-mobile" class="icon-btn mobile-only file-btn-wrapper" title="Import" aria-label="Import">
+        <input type="file" class="file-import-input" accept="*/*" title="Import" />
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </label>
 
@@ -239,9 +241,13 @@
       </div>
 
       <div class="worksheet-footer-bar">
-        <button id="btn-add-cell-bottom" class="btn-add-cell">
+        <button id="btn-add-cell-bottom" class="btn-add-cell" title="Add a new calculation cell">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>Add Calculation Cell</span>
+        </button>
+        <button id="btn-run-all" class="btn-run-all" title="Re-evaluate all calculation cells">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Run All</span>
         </button>
       </div>
     </main>

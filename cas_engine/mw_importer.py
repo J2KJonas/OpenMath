@@ -445,6 +445,9 @@ class WorksheetIO:
                                 'is_worksheet_mode': not is_presentation,
                                 'section_level': depth,
                             }
+                            if is_1d_input and out_result:
+                                cell['result'] = out_result
+                                out_result = None
                             cells_data.append(cell)
                             exec_idx += 1
                 return

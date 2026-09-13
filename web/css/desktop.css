@@ -384,9 +384,14 @@
 }
 
 .katex-rendered-output {
-  font-size: 18px;
+  font-size: 19px;
   overflow-x: auto;
-  padding: 4px 0;
+  padding: 6px 0;
+  color: #3b82f6; /* Authentic OpenMath / Maple mathematical blue */
+}
+
+[data-theme="light"] .katex-rendered-output {
+  color: #1d4ed8; /* High-contrast mathematical blue in light mode */
 }
 
 .plain-text-output {
@@ -394,7 +399,11 @@
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-primary);
+  color: #3b82f6;
+}
+
+[data-theme="light"] .plain-text-output {
+  color: #1d4ed8;
 }
 
 .cell-calculating {
@@ -419,15 +428,129 @@
   font-size: 13px;
 }
 
+/* Section Header Presentation */
+.cell-section-header {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  margin-top: 24px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.cell-section-header.level-1 {
+  margin-left: 14px;
+  border-left-color: #10b981;
+}
+
+.cell-section-header.level-2 {
+  margin-left: 28px;
+  border-left-color: #8b5cf6;
+}
+
+.section-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.section-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.section-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+.section-title-display {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.section-actions {
+  flex-shrink: 0;
+}
+
+/* Text Mode Presentation (Exercises, Explanations, Problem Statements) */
+.cell-text-mode {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+}
+
+.text-cell-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px;
+  gap: 12px;
+}
+
+.text-cell-body {
+  flex: 1;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.text-cell-body:focus {
+  background-color: var(--bg-surface);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.text-cell-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  display: block;
+  margin: 10px 0;
+}
+
+.text-cell-actions {
+  flex-shrink: 0;
+}
+
 .worksheet-footer-bar {
   padding: 12px 32px 36px 32px;
   max-width: 980px;
   margin: 0 auto;
   width: 100%;
+  display: flex;
+  gap: 12px;
 }
 
 .btn-add-cell {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   border: 2px dashed var(--border-color);
   border-radius: var(--radius-md);
@@ -441,6 +564,24 @@
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   background-color: var(--accent-subtle);
+}
+
+.btn-run-all {
+  padding: 10px 18px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-run-all:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
 }
 
 /* Matrix Wizard Controls */

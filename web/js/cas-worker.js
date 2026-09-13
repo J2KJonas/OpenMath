@@ -9,6 +9,27 @@ importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
 let pyodide = null;
 let casBridge = null;
 let isInitialized = false;
+let pendingMessages = [];
+
+function executeParseDocument(data) {
+  try {
+    pyodide.globals.set("_doc_content_input", data.content || "");
+    const docJson = pyodide.runPython(`
+json.dumps(cas_bridge.parse_worksheet_document(_doc_content_input))
+`);
+    const parsedDoc = JSON.parse(docJson);
+    postMessage({
+      type: "DOCUMENT_PARSED",
+      ...parsedDoc
+    });
+  } catch (err) {
+    postMessage({
+      type: "DOCUMENT_PARSED",
+      cells: [],
+      error: `Document Parse Error: ${err.message}`
+    });
+  }
+}
 
 // List of cas_engine modules to load
 const CAS_ENGINE_FILES = [
@@ -107,6 +128,14 @@ import json
       message: "OpenMath CAS engine is ready.",
       info: sysInfo
     });
+
+    // Drain queued requests
+    while (pendingMessages.length > 0) {
+      const queued = pendingMessages.shift();
+      if (queued && queued.type === "PARSE_DOCUMENT") {
+        executeParseDocument(queued);
+      }
+    }
   } catch (err) {
     console.error("Error initializing Pyodide:", err);
     postMessage({
@@ -178,30 +207,15 @@ json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec
 
     case "PARSE_DOCUMENT":
       if (!isInitialized) {
+        pendingMessages.push(data);
         postMessage({
-          type: "DOCUMENT_PARSED",
-          cells: [],
-          error: "CAS engine is still loading. Please wait a moment..."
+          type: "STATUS",
+          status: "loading",
+          message: "Parsing worksheet document (waiting for CAS engine)..."
         });
         return;
       }
-      try {
-        pyodide.globals.set("_doc_content_input", data.content || "");
-        const docJson = pyodide.runPython(`
-json.dumps(cas_bridge.parse_worksheet_document(_doc_content_input))
-`);
-        const parsedDoc = JSON.parse(docJson);
-        postMessage({
-          type: "DOCUMENT_PARSED",
-          ...parsedDoc
-        });
-      } catch (err) {
-        postMessage({
-          type: "DOCUMENT_PARSED",
-          cells: [],
-          error: `Document Parse Error: ${err.message}`
-        });
-      }
+      executeParseDocument(data);
       break;
 
     default:

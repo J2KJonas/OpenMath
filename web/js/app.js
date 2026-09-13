@@ -297,79 +297,76 @@ class OpenMathApp {
   }
 
   bindImportEvents() {
-    const fileInput = document.getElementById("file-import-input");
-    const importBtnDesktop = document.getElementById("btn-import-desktop");
-    const importBtnMobile = document.getElementById("btn-import-mobile");
+    const fileInputs = document.querySelectorAll(".file-import-input");
 
-    // Keyboard accessibility for label-based import buttons
-    const handleKey = (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        if (fileInput) fileInput.click();
-      }
-    };
-    if (importBtnDesktop) importBtnDesktop.addEventListener("keydown", handleKey);
-    if (importBtnMobile) importBtnMobile.addEventListener("keydown", handleKey);
+    const processFile = (file) => {
+      if (!file) return;
 
-    if (fileInput) {
-      fileInput.addEventListener("change", (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
+      const statusText = document.getElementById("status-text");
+      if (statusText) statusText.textContent = `Reading ${file.name}...`;
 
-        const statusText = document.getElementById("status-text");
-        if (statusText) statusText.textContent = `Reading ${file.name}...`;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target.result;
+        const fname = file.name.toLowerCase();
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const content = event.target.result;
-          const fname = file.name.toLowerCase();
-
-          // Check if JSON format
-          if (fname.endsWith(".json")) {
-            try {
-              const doc = JSON.parse(content);
-              const cellList = Array.isArray(doc) ? doc : (doc.cells || []);
-              if (cellList.length > 0 && this.worksheet) {
-                this.worksheet.loadImportedCells(cellList);
-                if (statusText) statusText.textContent = `Imported ${cellList.length} cells from ${file.name}.`;
-                return;
-              }
-            } catch (err) {
-              console.warn("Falling back to worker parser:", err);
+        // Check if JSON format
+        if (fname.endsWith(".json")) {
+          try {
+            const doc = JSON.parse(content);
+            const cellList = Array.isArray(doc) ? doc : (doc.cells || []);
+            if (cellList.length > 0 && this.worksheet) {
+              this.worksheet.loadImportedCells(cellList);
+              if (statusText) statusText.textContent = `Loaded ${cellList.length} cells from ${file.name}.`;
+              return;
             }
+          } catch (err) {
+            console.warn("Falling back to worker parser:", err);
           }
+        }
 
-          // Send to Web Worker to parse .mw, .mv, or formatted text
-          if (this.worker) {
-            this.worker.postMessage({ type: "PARSE_DOCUMENT", content: content });
-          }
-        };
+        // Send to Web Worker to parse .mw, .mv, or formatted text
+        if (this.worker) {
+          if (statusText) statusText.textContent = `Parsing ${file.name}...`;
+          this.worker.postMessage({ type: "PARSE_DOCUMENT", content: content, filename: file.name });
+        }
+      };
 
-        reader.onerror = (err) => {
-          console.error("FileReader error:", err);
-          if (statusText) statusText.textContent = `Error reading ${file.name}`;
-          alert(`Error reading file: ${file.name}`);
-        };
+      reader.onerror = (err) => {
+        console.error("FileReader error:", err);
+        if (statusText) statusText.textContent = `Error reading ${file.name}`;
+        alert(`Error reading file: ${file.name}`);
+      };
 
-        reader.readAsText(file);
-        fileInput.value = "";
+      reader.readAsText(file);
+    };
+
+    fileInputs.forEach((inp) => {
+      inp.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        processFile(file);
+        inp.value = "";
       });
-    }
+    });
 
     // Drag and drop onto window
     window.addEventListener("dragover", (e) => e.preventDefault());
     window.addEventListener("drop", (e) => {
       e.preventDefault();
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        if (fileInput) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          fileInput.files = dt.files;
-          fileInput.dispatchEvent(new Event("change"));
-        }
+        processFile(e.dataTransfer.files[0]);
       }
     });
+
+    // Run All button in worksheet footer
+    const runAllBtn = document.getElementById("btn-run-all");
+    if (runAllBtn) {
+      runAllBtn.addEventListener("click", () => {
+        if (this.worksheet) {
+          this.worksheet.evaluateAll();
+        }
+      });
+    }
   }
 }
 

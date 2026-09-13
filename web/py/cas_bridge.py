@@ -6,6 +6,7 @@ import sys
 import os
 import traceback
 import json
+import uuid
 
 # Ensure cas_engine is accessible on path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
@@ -118,7 +119,7 @@ def get_system_info() -> dict:
 def parse_worksheet_document(content: str) -> dict:
     """
     Parse .mw, .mv, .json, or plain text worksheet file content.
-    Returns dictionary with extracted calculation cells.
+    Returns dictionary with extracted calculation cells and formatting.
     """
     if not content or not content.strip():
         return {"cells": [], "error": "Document is empty"}
@@ -128,18 +129,27 @@ def parse_worksheet_document(content: str) -> dict:
     # JSON worksheet support
     if stripped.startswith('[') or stripped.startswith('{'):
         try:
-            import json
             data = json.loads(stripped)
             cell_list = data if isinstance(data, list) else data.get('cells', [])
             parsed = []
             for c in cell_list:
                 inp = c.get("input", "")
-                if inp:
-                    parsed.append({
-                        "input": inp,
-                        "mode": "text" if c.get("mode") == "text" or c.get("input_mode") == 2 else "math",
-                        "title": c.get("title", "")
-                    })
+                is_sec = bool(c.get("is_section_header", False))
+                mode_val = c.get("input_mode", 2 if c.get("mode") == "text" else 0)
+                parsed.append({
+                    "cell_id": c.get("cell_id") or str(uuid.uuid4())[:8],
+                    "execution_idx": c.get("execution_idx", len(parsed) + 1),
+                    "input": inp,
+                    "input_mode": mode_val,
+                    "mode": "section" if is_sec else ("text" if mode_val == 2 else "math"),
+                    "is_section_header": is_sec,
+                    "section_title": c.get("section_title", inp if is_sec else ""),
+                    "section_level": c.get("section_level", 0),
+                    "section_html": c.get("section_html", ""),
+                    "is_collapsed": bool(c.get("is_collapsed", False)),
+                    "result": c.get("result"),
+                    "embedded_images": c.get("embedded_images", {}),
+                })
             if parsed:
                 return {"cells": parsed, "error": None}
         except Exception:
@@ -152,35 +162,81 @@ def parse_worksheet_document(content: str) -> dict:
         parsed = []
         for c in raw_cells:
             inp = (c.get('input', '') or '').strip()
-            is_sec = c.get('is_section_header', False)
+            is_sec = bool(c.get('is_section_header', False))
             title = (c.get('section_title', '') or '').strip()
+            mode_val = c.get('input_mode', 0)
+            mode_str = "section" if is_sec else ("text" if mode_val == 2 else "math")
 
-            if is_sec:
-                parsed.append({
-                    "input": f"# {title or inp}",
-                    "mode": "text",
-                    "title": title or inp
-                })
-            elif inp:
-                parsed.append({
-                    "input": inp,
-                    "mode": "text" if c.get('input_mode') == WorksheetIO.MODE_TEXT else "math",
-                    "title": ""
-                })
+            res_dict = c.get('result')
+            clean_res = None
+            if res_dict:
+                exact_latex = res_dict.get('exact_latex') or ''
+                exact_text = res_dict.get('exact_text') or ''
+                if not exact_latex and exact_text:
+                    exact_latex = exact_text
+                numeric_latex = res_dict.get('numeric_latex') or exact_latex
+                numeric_text = res_dict.get('numeric_text') or exact_text
+                clean_res = {
+                    'exact_latex': exact_latex,
+                    'exact_text': exact_text,
+                    'numeric_latex': numeric_latex,
+                    'numeric_text': numeric_text,
+                    'is_plot': bool(res_dict.get('is_plot', False)),
+                    'result_type': res_dict.get('result_type', 'Symbolic')
+                }
+
+            parsed.append({
+                'cell_id': c.get('cell_id') or str(uuid.uuid4())[:8],
+                'execution_idx': c.get('execution_idx', len(parsed) + 1),
+                'input': inp,
+                'input_mode': mode_val,
+                'mode': mode_str,
+                'is_section_header': is_sec,
+                'section_title': title or inp,
+                'section_level': c.get('section_level', 0),
+                'is_collapsed': bool(c.get('is_collapsed', False)),
+                'section_bg_colors': c.get('section_bg_colors', []),
+                'section_html': c.get('section_html', ''),
+                'embedded_images': c.get('embedded_images', {}),
+                'result': clean_res,
+                'error': c.get('error')
+            })
+
         if parsed:
             return {"cells": parsed, "error": None}
     except Exception:
         pass
 
-    # Plain text fallback: line by line or [In n] blocks
-        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
-        fallback_cells = []
-        for line in lines:
-            if line.startswith("#"):
-                fallback_cells.append({"input": line, "mode": "text", "title": line.lstrip("# ")})
-            elif not line.startswith("//"):
-                fallback_cells.append({"input": line, "mode": "math", "title": ""})
-        if fallback_cells:
-            return {"cells": fallback_cells, "error": None}
-        return {"cells": [], "error": f"{type(e).__name__}: {str(e)}"}
+    # Plain text fallback: line by line or markdown headers
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    fallback_cells = []
+    for line in lines:
+        if line.startswith("#"):
+            is_sec = line.startswith("# ") or line.startswith("## ")
+            sec_title = line.lstrip("# ")
+            fallback_cells.append({
+                "cell_id": str(uuid.uuid4())[:8],
+                "execution_idx": len(fallback_cells) + 1,
+                "input": line,
+                "input_mode": 2,
+                "mode": "section" if is_sec else "text",
+                "is_section_header": is_sec,
+                "section_title": sec_title,
+                "section_level": 0 if line.startswith("# ") else 1,
+                "result": None
+            })
+        elif not line.startswith("//"):
+            fallback_cells.append({
+                "cell_id": str(uuid.uuid4())[:8],
+                "execution_idx": len(fallback_cells) + 1,
+                "input": line,
+                "input_mode": 1,
+                "mode": "math",
+                "is_section_header": False,
+                "result": None
+            })
+    if fallback_cells:
+        return {"cells": fallback_cells, "error": None}
+    return {"cells": [], "error": "No calculation cells found in document"}
+
 

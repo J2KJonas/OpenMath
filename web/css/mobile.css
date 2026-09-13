@@ -70,6 +70,31 @@
     border-radius: var(--radius-sm);
   }
 
+  .cell-section-header {
+    margin-top: 16px;
+    margin-bottom: 10px;
+  }
+
+  .section-title-display {
+    font-size: 15px;
+  }
+
+  .cell-section-header.level-1 {
+    margin-left: 8px;
+  }
+
+  .cell-section-header.level-2 {
+    margin-left: 16px;
+  }
+
+  .text-cell-inner {
+    padding: 10px 12px;
+  }
+
+  .text-cell-body {
+    font-size: 14px;
+  }
+
   .cell-header {
     padding: 6px 12px;
   }

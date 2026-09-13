@@ -194,12 +194,118 @@ export class WorksheetManager {
     this.container.appendChild(cellEl);
     this.cells.push(cellObj);
 
+    if (cachedResult) {
+      cellObj.result = cachedResult;
+      const outputRow = cellEl.querySelector(".cell-output-row");
+      if (outputRow) {
+        outputRow.style.display = "block";
+        this.renderMathOutput(cellObj);
+      }
+    }
+
     if (focus) {
       inputEl.focus();
       this.activeCellId = cellId;
     }
     autoResize();
     return cellObj;
+  }
+
+  addSectionHeader(title, level = 0, html = "", isCollapsed = false) {
+    this.cellCounter++;
+    const idx = this.cellCounter;
+    const secId = `section_${idx}`;
+
+    const secEl = document.createElement("div");
+    secEl.className = `worksheet-cell cell-section-header level-${level}`;
+    secEl.id = secId;
+    secEl.dataset.sectionLevel = level;
+    secEl.dataset.collapsed = isCollapsed ? "true" : "false";
+
+    const displayHtml = (html && html.trim()) ? html : `<span class="section-title-text">${this.escapeHtml(title || "Section")}</span>`;
+
+    secEl.innerHTML = `
+      <div class="section-header-inner">
+        <button class="section-toggle-btn" title="Expand / Collapse section">
+          <span class="chevron-arrow">${isCollapsed ? "▶" : "▼"}</span>
+        </button>
+        <div class="section-title-display">${displayHtml}</div>
+        <div class="section-actions">
+          <button class="cell-btn btn-delete-section" title="Delete section">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const toggleBtn = secEl.querySelector(".section-toggle-btn");
+    const chevron = secEl.querySelector(".chevron-arrow");
+    toggleBtn.addEventListener("click", () => {
+      const collapsed = secEl.dataset.collapsed === "true";
+      const nextCollapsed = !collapsed;
+      secEl.dataset.collapsed = nextCollapsed ? "true" : "false";
+      chevron.textContent = nextCollapsed ? "▶" : "▼";
+      this.toggleSectionCollapse(secEl, level, nextCollapsed);
+    });
+
+    const delBtn = secEl.querySelector(".btn-delete-section");
+    delBtn.addEventListener("click", () => {
+      secEl.remove();
+    });
+
+    this.container.appendChild(secEl);
+    return secEl;
+  }
+
+  toggleSectionCollapse(sectionEl, sectionLevel, isCollapsed) {
+    let sibling = sectionEl.nextElementSibling;
+    while (sibling) {
+      if (sibling.classList.contains("cell-section-header")) {
+        const sibLevel = parseInt(sibling.dataset.sectionLevel || "0", 10);
+        if (sibLevel <= sectionLevel) {
+          break; // Stop at next peer or higher section
+        }
+      }
+      sibling.style.display = isCollapsed ? "none" : "";
+      sibling = sibling.nextElementSibling;
+    }
+  }
+
+  addTextCell(content = "", embeddedImages = {}) {
+    this.cellCounter++;
+    const idx = this.cellCounter;
+    const cellId = `text_cell_${idx}`;
+
+    const textEl = document.createElement("div");
+    textEl.className = "worksheet-cell cell-text-mode";
+    textEl.id = cellId;
+
+    let formatted = content || "";
+    if (embeddedImages && typeof embeddedImages === "object") {
+      for (const [imgId, b64] of Object.entries(embeddedImages)) {
+        const dataUri = `data:image/png;base64,${b64}`;
+        formatted = formatted.split(imgId).join(dataUri);
+      }
+    }
+
+    textEl.innerHTML = `
+      <div class="text-cell-inner">
+        <div class="text-cell-body" contenteditable="true" spellcheck="false">${formatted}</div>
+        <div class="text-cell-actions">
+          <button class="cell-btn btn-delete-text" title="Delete text cell">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+
+    const delBtn = textEl.querySelector(".btn-delete-text");
+    delBtn.addEventListener("click", () => {
+      textEl.remove();
+    });
+
+    this.container.appendChild(textEl);
+    return textEl;
   }
 
   deleteCell(cellId) {
@@ -229,10 +335,34 @@ export class WorksheetManager {
     this.cellCounter = 0;
     this.activeCellId = null;
 
+    let pendingCollapsedSection = null;
+
     cells.forEach((c) => {
       const inp = c.input !== undefined ? c.input : "";
-      if (inp.trim() !== "") {
-        this.addCell(inp, false);
+      const isSec = Boolean(c.is_section_header || c.mode === "section");
+      const isText = Boolean(c.input_mode === 2 || c.mode === "text");
+
+      if (isSec) {
+        const title = c.section_title || inp || "Section";
+        const secEl = this.addSectionHeader(title, c.section_level || 0, c.section_html, c.is_collapsed);
+        if (c.is_collapsed) {
+          pendingCollapsedSection = { el: secEl, level: c.section_level || 0 };
+        } else {
+          pendingCollapsedSection = null;
+        }
+      } else if (isText) {
+        if (inp.trim() !== "") {
+          const textEl = this.addTextCell(inp, c.embedded_images);
+          if (pendingCollapsedSection) {
+            textEl.style.display = "none";
+          }
+        }
+      } else {
+        // Math calculation cell with cached result support
+        const cellObj = this.addCell(inp, false, c.result);
+        if (pendingCollapsedSection) {
+          cellObj.dom.style.display = "none";
+        }
       }
     });
 
