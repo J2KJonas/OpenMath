@@ -2,6 +2,8 @@
 
 A desktop mathematical calculator application focusing on symbolic computation, mathematical rendering, and an interactive worksheet document feel.
 
+**Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
+
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen)
 ![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green)
@@ -10,7 +12,7 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 ### 1. Interactive Worksheet / Document Layout
 - **Stacked Execution Blocks (Cells)**: Chronologically ordered `[In n]` and `[Out n]` calculation cells.
@@ -71,7 +73,7 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 
 ---
 
-## 🛠 Technology Stack
+## Technology Stack
 
 - **GUI Framework**: PyQt6
 - **Math Engine**: SymPy
@@ -80,7 +82,7 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 ### 1. Clone the repository
 ```bash
@@ -102,11 +104,11 @@ pip install -r requirements.txt
 
 ### 3. Run the Application
 
-#### 🪟 Windows:
+#### Windows:
 - Double-click **`run.bat`** (or run `python main.py` / `py -3 main.py` in Command Prompt / PowerShell)
 - *(Optional)* Create Desktop & Start Menu shortcuts: double-click **`create_shortcut_windows.bat`**
 
-#### 🍎 macOS (Apple Silicon M1/M2/M3/M4 & Intel):
+#### macOS (Apple Silicon M1/M2/M3/M4 & Intel):
 - Run in terminal:
   ```bash
   ./run.sh
@@ -118,7 +120,7 @@ pip install -r requirements.txt
   ./create_shortcut.sh
   ```
 
-#### 🐧 Linux:
+#### Linux:
 - Run in terminal:
   ```bash
   ./run.sh
@@ -132,7 +134,7 @@ pip install -r requirements.txt
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Shortcut (Win / Linux) | Shortcut (macOS) | Action |
 | :--- | :--- | :--- |
@@ -150,7 +152,7 @@ pip install -r requirements.txt
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 calculator/
@@ -199,7 +201,7 @@ calculator/
 
 ---
 
-## 🧪 Running Tests
+## Running Tests
 
 Run the full automated test suite:
 ```bash
@@ -210,7 +212,7 @@ All 68 unit and UI tests run in headless-compatible mode and cleanly terminate a
 
 ---
 
-## ❓ Troubleshooting & FAQs
+## Troubleshooting & FAQs
 
 ### `NameError: name 'Optional' is not defined`
 If you encounter this error when launching on Windows, macOS, or Linux, ensure you are using the latest version of the repository. The typing annotation in `ui/worksheet_cell.py` imports `Optional` from the standard library `typing` module, compatible with Python 3.10 through 3.14+.
@@ -242,5 +244,5 @@ When running on Windows via `python main.py` or `run.bat`, the application expli
 
 ---
 
-## 📄 License
+## License
 MIT License. Open-source scientific desktop software.
