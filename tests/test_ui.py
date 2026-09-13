@@ -299,10 +299,10 @@ class TestUIComponents(unittest.TestCase):
         panel.sections["Calculus"].set_expanded(True)
         self.assertTrue(panel.sections["Calculus"].header.is_expanded)
 
-        # 1. Start drag on 'Plots' section
-        panel._on_section_drag_started("Plots")
+        # 1. Start drag on 'Matrices & Vectors' section
+        panel._on_section_drag_started("Matrices & Vectors")
         self.assertTrue(panel._is_dragging_section)
-        self.assertEqual(panel._dragged_section_title, "Plots")
+        self.assertEqual(panel._dragged_section_title, "Matrices & Vectors")
 
         # ALL sections must fold in
         for sec_name in panel.section_order:
@@ -314,13 +314,13 @@ class TestUIComponents(unittest.TestCase):
         panel.update_drag_indicator(QPoint(20, first_sec.geometry().top() - 5))
         self.assertTrue(panel.drop_indicator.isVisible())
 
-        # 3. Drop 'Plots' at top (position before first section)
-        panel.handle_section_drop("Plots", QPoint(20, first_sec.geometry().top() - 5))
+        # 3. Drop 'Matrices & Vectors' at top (position before first section)
+        panel.handle_section_drop("Matrices & Vectors", QPoint(20, first_sec.geometry().top() - 5))
         self.assertFalse(panel.drop_indicator.isVisible())
-        self.assertEqual(panel.section_order[0], "Plots")
+        self.assertEqual(panel.section_order[0], "Matrices & Vectors")
 
         # Dropped section should be expanded
-        self.assertTrue(panel.sections["Plots"].header.is_expanded)
+        self.assertTrue(panel.sections["Matrices & Vectors"].header.is_expanded)
         # Previously expanded section should be restored
         self.assertTrue(panel.sections["Calculus"].header.is_expanded)
 
@@ -328,15 +328,15 @@ class TestUIComponents(unittest.TestCase):
         saved_raw = settings.value("palette_section_order")
         self.assertIsNotNone(saved_raw)
         saved_order = json.loads(saved_raw)
-        self.assertEqual(saved_order[0], "Plots")
+        self.assertEqual(saved_order[0], "Matrices & Vectors")
 
         # 5. Opening a new PalettePanel should restore the persisted order
         panel2 = PalettePanel(theme_mode="light")
-        self.assertEqual(panel2.section_order[0], "Plots")
+        self.assertEqual(panel2.section_order[0], "Matrices & Vectors")
 
         # 6. Test move_section (context menu action)
-        panel.move_section("Plots", 1)  # Move down by 1
-        self.assertEqual(panel.section_order[1], "Plots")
+        panel.move_section("Matrices & Vectors", 1)  # Move down by 1
+        self.assertEqual(panel.section_order[1], "Matrices & Vectors")
 
         # 7. Test reset_section_order
         panel.reset_section_order()

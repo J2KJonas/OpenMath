@@ -1006,9 +1006,20 @@ class DocumentTabBar(QTabBar):
         super().__init__(parent)
         self._repositioning = False
         self._prev_start_idx = 0
+        self.setUsesScrollButtons(False)
+        self.setElideMode(Qt.TextElideMode.ElideNone)
 
     def minimumSizeHint(self):
         return QSize(50, 26)
+
+    def sizeHint(self):
+        total_w = 0
+        for i in range(self.count()):
+            if not hasattr(self, 'isTabVisible') or self.isTabVisible(i):
+                r = self.tabRect(i)
+                w = r.width() if r.isValid() and r.width() > 0 else self.tabSizeHint(i).width()
+                total_w += max(w, 130)
+        return QSize(max(50, total_w), 26)
 
     def tabInserted(self, index: int):
         super().tabInserted(index)
@@ -1038,6 +1049,9 @@ class DocumentTabBar(QTabBar):
                         watched.setVisible(False)
                         return True
                     r = self.tabRect(i)
+                    if not r.isValid() or r.width() <= 0:
+                        watched.setVisible(False)
+                        return True
                     proper_x = r.x() + r.width() - watched.width() - 6
                     proper_y = r.y() + (r.height() - watched.height()) // 2
                     if watched.x() != proper_x or watched.y() != proper_y:
@@ -1061,8 +1075,11 @@ class DocumentTabBar(QTabBar):
                     if hasattr(self, 'isTabVisible') and not self.isTabVisible(i):
                         btn.setVisible(False)
                         continue
-                    btn.setVisible(True)
                     r = self.tabRect(i)
+                    if not r.isValid() or r.width() <= 0:
+                        btn.setVisible(False)
+                        continue
+                    btn.setVisible(True)
                     proper_x = r.x() + r.width() - btn.width() - 6
                     proper_y = r.y() + (r.height() - btn.height()) // 2
                     btn.move(proper_x, proper_y)
@@ -1077,8 +1094,18 @@ class DocumentTabBar(QTabBar):
 
 
 class DocumentTabWidget(QTabWidget):
-    """Custom QTabWidget with bounded minimum size hint to prevent pushing parent window width."""
+    """Custom QTabWidget with bounded minimum size hint and dynamic sizeHint to fit visible tabs."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setUsesScrollButtons(False)
+
     def minimumSizeHint(self):
+        return QSize(50, 26)
+
+    def sizeHint(self):
+        tb = self.tabBar()
+        if tb:
+            return QSize(max(50, tb.sizeHint().width() + 4), 26)
         return QSize(50, 26)
 
 
@@ -1654,10 +1681,13 @@ class MainWindow(QMainWindow):
             return
 
         available_w = self.tab_bar_toolbar.width()
-        if available_w <= 0 and hasattr(self, 'tab_widget') and self.tab_widget.parentWidget():
-            available_w = self.tab_widget.parentWidget().width()
-        if available_w <= 0:
-            available_w = self.width()
+        if available_w <= 100:
+            if hasattr(self, 'tab_bar_container') and self.tab_bar_container.width() > 100:
+                available_w = self.tab_bar_container.width()
+            elif hasattr(self, 'tab_widget') and self.tab_widget.parentWidget() and self.tab_widget.parentWidget().width() > 100:
+                available_w = self.tab_widget.parentWidget().width()
+            elif self.width() > 100:
+                available_w = self.width() - 20
         if available_w <= 0:
             return
 
@@ -1668,8 +1698,8 @@ class MainWindow(QMainWindow):
             tab_widths.append(max(174, fm_w + 44))
 
         sum_all_w = sum(tab_widths)
-        btn_add_w = self.btn_add_tab.width()
-        btn_overflow_w = self.btn_tab_overflow.width()
+        btn_add_w = self.btn_add_tab.width() if hasattr(self, 'btn_add_tab') else 20
+        btn_overflow_w = self.btn_tab_overflow.width() if hasattr(self, 'btn_tab_overflow') else 20
 
         max_w_for_tabs = max(100, available_w - (btn_add_w + btn_overflow_w + 24))
 
@@ -1682,6 +1712,8 @@ class MainWindow(QMainWindow):
 
             self.btn_add_tab.setVisible(True)
             self.btn_tab_overflow.setVisible(False)
+            tb.updateGeometry()
+            self.tab_widget.updateGeometry()
             return
 
         current_idx = self.tab_widget.currentIndex()
@@ -1700,13 +1732,13 @@ class MainWindow(QMainWindow):
         tb._reposition_close_buttons()
 
         hidden_count = total - (end_idx - start_idx)
+        self.btn_add_tab.setVisible(True)
+        self.btn_tab_overflow.setVisible(hidden_count > 0)
         if hidden_count > 0:
-            self.btn_add_tab.setVisible(False)
-            self.btn_tab_overflow.setVisible(True)
             self.btn_tab_overflow.setToolTip(f"More Tabs ({hidden_count} hidden)")
-        else:
-            self.btn_add_tab.setVisible(True)
-            self.btn_tab_overflow.setVisible(False)
+
+        tb.updateGeometry()
+        self.tab_widget.updateGeometry()
 
     def _update_add_tab_button_pos(self):
         self._update_tab_bar_layout()
