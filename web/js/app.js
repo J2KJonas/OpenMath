@@ -25,6 +25,7 @@ class OpenMathApp {
     this.initWorker();
     this.bindHeaderEvents();
     this.bindExportModal();
+    this.bindImportEvents();
   }
 
   initTheme() {
@@ -100,6 +101,19 @@ class OpenMathApp {
           case "RESULT":
             if (this.worksheet) {
               this.worksheet.handleResult(data.id, data);
+            }
+            break;
+
+          case "DOCUMENT_PARSED":
+            if (data.error) {
+              alert(`Could not parse document: ${data.error}`);
+            } else if (data.cells && data.cells.length > 0) {
+              if (this.worksheet) {
+                this.worksheet.loadImportedCells(data.cells);
+              }
+              if (statusText) statusText.textContent = `Loaded ${data.cells.length} cells from document.`;
+            } else {
+              alert("No valid calculation cells found in this file.");
             }
             break;
 
@@ -279,6 +293,80 @@ class OpenMathApp {
         }
         if (exportModal) exportModal.classList.remove("open");
       });
+    });
+  }
+
+  bindImportEvents() {
+    const fileInput = document.getElementById("file-import-input");
+    const importBtnDesktop = document.getElementById("btn-import-desktop");
+    const importBtnMobile = document.getElementById("btn-import-mobile");
+    const importBtnSidebar = document.getElementById("btn-import-sidebar");
+
+    const triggerSelect = () => {
+      if (fileInput) fileInput.click();
+    };
+
+    if (importBtnDesktop) importBtnDesktop.addEventListener("click", triggerSelect);
+    if (importBtnMobile) importBtnMobile.addEventListener("click", triggerSelect);
+    if (importBtnSidebar) {
+      importBtnSidebar.addEventListener("click", () => {
+        const sidebar = document.getElementById("app-sidebar");
+        if (sidebar) sidebar.classList.remove("open");
+        triggerSelect();
+      });
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const statusText = document.getElementById("status-text");
+        if (statusText) statusText.textContent = `Reading ${file.name}...`;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const content = event.target.result;
+          const fname = file.name.toLowerCase();
+
+          // Check if JSON format
+          if (fname.endsWith(".json")) {
+            try {
+              const doc = JSON.parse(content);
+              const cellList = Array.isArray(doc) ? doc : (doc.cells || []);
+              if (cellList.length > 0 && this.worksheet) {
+                this.worksheet.loadImportedCells(cellList);
+                if (statusText) statusText.textContent = `Imported ${cellList.length} cells from ${file.name}.`;
+                return;
+              }
+            } catch (err) {
+              console.warn("Falling back to worker parser:", err);
+            }
+          }
+
+          // Send to Web Worker to parse .mw, .mv, or formatted text
+          if (this.worker) {
+            this.worker.postMessage({ type: "PARSE_DOCUMENT", content: content });
+          }
+        };
+        reader.readAsText(file);
+        fileInput.value = "";
+      });
+    }
+
+    // Drag and drop onto window
+    window.addEventListener("dragover", (e) => e.preventDefault());
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (fileInput) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          fileInput.files = dt.files;
+          fileInput.dispatchEvent(new Event("change"));
+        }
+      }
     });
   }
 }

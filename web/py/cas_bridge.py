@@ -114,3 +114,70 @@ def get_system_info() -> dict:
         "numpy_version": numpy.__version__,
         "python_version": sys.version
     }
+
+def parse_worksheet_document(content: str) -> dict:
+    """
+    Parse .mw, .mv, .json, or plain text worksheet file content.
+    Returns dictionary with extracted calculation cells.
+    """
+    if not content or not content.strip():
+        return {"cells": [], "error": "Document is empty"}
+
+    stripped = content.strip()
+
+    # JSON worksheet support
+    if stripped.startswith('[') or stripped.startswith('{'):
+        try:
+            import json
+            data = json.loads(stripped)
+            cell_list = data if isinstance(data, list) else data.get('cells', [])
+            parsed = []
+            for c in cell_list:
+                inp = c.get("input", "")
+                if inp:
+                    parsed.append({
+                        "input": inp,
+                        "mode": "text" if c.get("mode") == "text" or c.get("input_mode") == 2 else "math",
+                        "title": c.get("title", "")
+                    })
+            if parsed:
+                return {"cells": parsed, "error": None}
+        except Exception:
+            pass
+
+    # Native .mw / .mv XML worksheet support
+    try:
+        from cas_engine.mw_importer import WorksheetIO
+        raw_cells = WorksheetIO.load_mw_string(content)
+        parsed = []
+        for c in raw_cells:
+            inp = (c.get('input', '') or '').strip()
+            is_sec = c.get('is_section_header', False)
+            title = (c.get('section_title', '') or '').strip()
+
+            if is_sec:
+                parsed.append({
+                    "input": f"# {title or inp}",
+                    "mode": "text",
+                    "title": title or inp
+                })
+            elif inp:
+                parsed.append({
+                    "input": inp,
+                    "mode": "text" if c.get('input_mode') == WorksheetIO.MODE_TEXT else "math",
+                    "title": ""
+                })
+        return {"cells": parsed, "error": None}
+    except Exception as e:
+        # Plain text fallback: line by line or [In n] blocks
+        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        fallback_cells = []
+        for line in lines:
+            if line.startswith("#"):
+                fallback_cells.append({"input": line, "mode": "text", "title": line.lstrip("# ")})
+            elif not line.startswith("//"):
+                fallback_cells.append({"input": line, "mode": "math", "title": ""})
+        if fallback_cells:
+            return {"cells": fallback_cells, "error": None}
+        return {"cells": [], "error": f"{type(e).__name__}: {str(e)}"}
+

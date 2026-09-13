@@ -222,6 +222,28 @@ export class WorksheetManager {
     this.addCell();
   }
 
+  loadImportedCells(cells) {
+    if (!cells || !cells.length) return;
+    this.container.innerHTML = "";
+    this.cells = [];
+    this.cellCounter = 0;
+    this.activeCellId = null;
+
+    cells.forEach((c) => {
+      const inp = c.input !== undefined ? c.input : "";
+      if (inp.trim() !== "") {
+        this.addCell(inp, false);
+      }
+    });
+
+    if (this.cells.length === 0) {
+      this.addCell("", true);
+    } else {
+      this.activeCellId = this.cells[0].id;
+      this.cells[0].dom.classList.add("focused");
+    }
+  }
+
   evaluateCell(cellId) {
     const cell = this.cells.find((c) => c.id === cellId);
     if (!cell) return;

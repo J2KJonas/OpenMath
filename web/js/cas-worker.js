@@ -176,6 +176,34 @@ json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec
       }
       break;
 
+    case "PARSE_DOCUMENT":
+      if (!isInitialized) {
+        postMessage({
+          type: "DOCUMENT_PARSED",
+          cells: [],
+          error: "CAS engine is still loading. Please wait a moment..."
+        });
+        return;
+      }
+      try {
+        pyodide.globals.set("_doc_content_input", data.content || "");
+        const docJson = pyodide.runPython(`
+json.dumps(cas_bridge.parse_worksheet_document(_doc_content_input))
+`);
+        const parsedDoc = JSON.parse(docJson);
+        postMessage({
+          type: "DOCUMENT_PARSED",
+          ...parsedDoc
+        });
+      } catch (err) {
+        postMessage({
+          type: "DOCUMENT_PARSED",
+          cells: [],
+          error: `Document Parse Error: ${err.message}`
+        });
+      }
+      break;
+
     default:
       console.warn("Unknown message type:", data.type);
   }

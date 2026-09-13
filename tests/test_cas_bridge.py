@@ -38,3 +38,31 @@ def test_matrix_operations():
     res = evaluate_expression("det(Matrix([[1, 2], [3, 4]]))", precision=6)
     assert res["error"] is None
     assert "-2" in res["exact_text"]
+
+def test_parse_mw_document():
+    from web.py.cas_bridge import parse_worksheet_document
+    sample_mw = """<?xml version="1.0" encoding="UTF-8"?>
+<Worksheet>
+<View-Properties presentation="false"/>
+<Section collapsed="false">
+<Title><Text-field>Exercise 1: Derivatives</Text-field></Title>
+<Group>
+<Input><Text-field><Equation input-equation="diff(sin(x), x)" display="diff(sin(x), x)">diff(sin(x), x)</Equation></Text-field></Input>
+</Group>
+</Section>
+</Worksheet>"""
+    doc = parse_worksheet_document(sample_mw)
+    assert doc["error"] is None
+    assert len(doc["cells"]) >= 2
+    inputs = [c["input"] for c in doc["cells"]]
+    assert any("Exercise 1" in inp for inp in inputs)
+    assert any("diff(sin(x), x)" in inp for inp in inputs)
+
+def test_parse_json_document():
+    from web.py.cas_bridge import parse_worksheet_document
+    sample_json = '[{"input": "expand((x+1)^2)", "mode": "math"}]'
+    doc = parse_worksheet_document(sample_json)
+    assert doc["error"] is None
+    assert len(doc["cells"]) == 1
+    assert doc["cells"][0]["input"] == "expand((x+1)^2)"
+
