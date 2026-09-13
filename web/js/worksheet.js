@@ -87,39 +87,23 @@ export class WorksheetManager {
     };
 
     const cellEl = document.createElement("div");
-    cellEl.className = "worksheet-cell";
+    cellEl.className = "worksheet-cell cell-execution-group";
     cellEl.id = cellId;
+    cellEl.dataset.cellId = cellId;
 
     cellEl.innerHTML = `
-      <div class="cell-header">
-        <div class="cell-label"><span class="cell-in-tag">In [${idx}]</span></div>
-        <div class="cell-controls">
-          <button class="cell-btn btn-eval" title="Execute (Shift+Enter)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Run</span>
-          </button>
-          <button class="cell-btn btn-clear-cell" title="Clear cell content">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
+      <div class="cell-bracket" title="Execution Group ["></div>
+      <div class="cell-content">
+        <div class="cell-input-row">
+          <span class="math-prompt">&gt;</span>
+          <textarea class="cell-input" placeholder="" rows="1" spellcheck="false">${this.escapeHtml(initialText)}</textarea>
         </div>
-      </div>
-      <div class="cell-input-row">
-        <textarea class="cell-input" placeholder="Type a mathematical formula or command (e.g. diff(sin(x), x), solve(x^2 - 4 = 0), plot(sin(x)))..." rows="1">${initialText}</textarea>
-      </div>
-      <div class="cell-output-row" style="display: none;">
-        <div class="output-header">
-          <span class="cell-out-tag">Out [${idx}]</span>
-          <div class="output-actions">
-            <div class="mode-switch-pill" title="Toggle Exact vs Numeric evaluation">
-              <button class="pill-btn mode-exact active">Exact</button>
-              <button class="pill-btn mode-numeric">Numeric</button>
-            </div>
-            <button class="copy-btn copy-latex" title="Copy LaTeX formula">LaTeX</button>
-            <button class="copy-btn copy-text" title="Copy Plain Text">Text</button>
-            <span class="timing-badge"></span>
+        <div class="cell-output-row" style="display: none;">
+          <div class="math-output-wrapper">
+            <div class="output-content"></div>
+            <span class="math-equation-label">(${idx})</span>
           </div>
         </div>
-        <div class="output-content"></div>
       </div>
     `;
 
@@ -127,7 +111,7 @@ export class WorksheetManager {
     cellObj.dom = cellEl;
     cellObj.inputEl = inputEl;
 
-    // Auto-expand textarea
+    // Auto-expand textarea height
     const autoResize = () => {
       inputEl.style.height = "auto";
       inputEl.style.height = `${inputEl.scrollHeight}px`;
@@ -141,53 +125,48 @@ export class WorksheetManager {
       cellEl.classList.add("focused");
     });
 
-    // Keyboard Shortcuts
+    const bracketEl = cellEl.querySelector(".cell-bracket");
+    if (bracketEl) {
+      bracketEl.addEventListener("click", () => {
+        inputEl.focus();
+      });
+    }
+
+    // Keyboard navigation and evaluation shortcuts (Enter evaluates like desktop OpenMath)
     inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.shiftKey || e.ctrlKey)) {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         this.evaluateCell(cellId);
-      }
-    });
-
-    // Button event listeners
-    const evalBtn = cellEl.querySelector(".btn-eval");
-    evalBtn.addEventListener("click", () => this.evaluateCell(cellId));
-
-    const clearBtn = cellEl.querySelector(".btn-clear-cell");
-    clearBtn.addEventListener("click", () => this.deleteCell(cellId));
-
-    // Mode toggles
-    const exactBtn = cellEl.querySelector(".mode-exact");
-    const numBtn = cellEl.querySelector(".mode-numeric");
-
-    exactBtn.addEventListener("click", () => {
-      cellObj.mode = "exact";
-      exactBtn.classList.add("active");
-      numBtn.classList.remove("active");
-      this.renderMathOutput(cellObj);
-    });
-
-    numBtn.addEventListener("click", () => {
-      cellObj.mode = "numeric";
-      numBtn.classList.add("active");
-      exactBtn.classList.remove("active");
-      this.renderMathOutput(cellObj);
-    });
-
-    // Copy handlers
-    const copyLatexBtn = cellEl.querySelector(".copy-latex");
-    copyLatexBtn.addEventListener("click", () => {
-      if (cellObj.result && (cellObj.result.exact_latex || cellObj.result.numeric_latex)) {
-        const str = cellObj.mode === "numeric" ? cellObj.result.numeric_latex : cellObj.result.exact_latex;
-        this.copyToClipboard(str, copyLatexBtn);
-      }
-    });
-
-    const copyTextBtn = cellEl.querySelector(".copy-text");
-    copyTextBtn.addEventListener("click", () => {
-      if (cellObj.result && (cellObj.result.exact_text || cellObj.result.numeric_text)) {
-        const str = cellObj.mode === "numeric" ? cellObj.result.numeric_text : cellObj.result.exact_text;
-        this.copyToClipboard(str, copyTextBtn);
+      } else if (e.key === "Enter" && e.shiftKey) {
+        e.preventDefault();
+        this.evaluateCell(cellId);
+      } else if (e.key === "Backspace" && inputEl.value === "") {
+        // If empty cell, backspace deletes and moves focus to previous cell
+        if (this.cells.length > 1) {
+          e.preventDefault();
+          const currIdx = this.cells.findIndex((c) => c.id === cellId);
+          this.deleteCell(cellId);
+          const targetIdx = Math.max(0, currIdx - 1);
+          if (this.cells[targetIdx]) {
+            this.cells[targetIdx].inputEl.focus();
+          }
+        }
+      } else if (e.key === "ArrowUp") {
+        if (inputEl.selectionStart === 0 && inputEl.selectionEnd === 0) {
+          const currIdx = this.cells.findIndex((c) => c.id === cellId);
+          if (currIdx > 0) {
+            e.preventDefault();
+            this.cells[currIdx - 1].inputEl.focus();
+          }
+        }
+      } else if (e.key === "ArrowDown") {
+        if (inputEl.selectionStart === inputEl.value.length) {
+          const currIdx = this.cells.findIndex((c) => c.id === cellId);
+          if (currIdx < this.cells.length - 1) {
+            e.preventDefault();
+            this.cells[currIdx + 1].inputEl.focus();
+          }
+        }
       }
     });
 
@@ -230,11 +209,6 @@ export class WorksheetManager {
           <span class="chevron-arrow">${isCollapsed ? "▶" : "▼"}</span>
         </button>
         <div class="section-title-display">${displayHtml}</div>
-        <div class="section-actions">
-          <button class="cell-btn btn-delete-section" title="Delete section">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
       </div>
     `;
 
@@ -246,11 +220,6 @@ export class WorksheetManager {
       secEl.dataset.collapsed = nextCollapsed ? "true" : "false";
       chevron.textContent = nextCollapsed ? "▶" : "▼";
       this.toggleSectionCollapse(secEl, level, nextCollapsed);
-    });
-
-    const delBtn = secEl.querySelector(".btn-delete-section");
-    delBtn.addEventListener("click", () => {
-      secEl.remove();
     });
 
     this.container.appendChild(secEl);
@@ -289,20 +258,8 @@ export class WorksheetManager {
     }
 
     textEl.innerHTML = `
-      <div class="text-cell-inner">
-        <div class="text-cell-body" contenteditable="true" spellcheck="false">${formatted}</div>
-        <div class="text-cell-actions">
-          <button class="cell-btn btn-delete-text" title="Delete text cell">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-      </div>
+      <div class="text-cell-body" contenteditable="true" spellcheck="false">${formatted}</div>
     `;
-
-    const delBtn = textEl.querySelector(".btn-delete-text");
-    delBtn.addEventListener("click", () => {
-      textEl.remove();
-    });
 
     this.container.appendChild(textEl);
     return textEl;
@@ -430,7 +387,7 @@ export class WorksheetManager {
     // If this was the last cell and has non-empty input, auto-append a new cell for flow
     const cellIndex = this.cells.indexOf(cell);
     if (cellIndex === this.cells.length - 1) {
-      this.addCell("", false);
+      this.addCell("", true);
     }
   }
 
@@ -439,7 +396,13 @@ export class WorksheetManager {
     if (!res) return;
 
     const outputContent = cell.dom.querySelector(".output-content");
+    if (!outputContent) return;
     outputContent.innerHTML = "";
+
+    const eqLabel = cell.dom.querySelector(".math-equation-label");
+    if (eqLabel) {
+      eqLabel.textContent = `(${cell.index})`;
+    }
 
     if (res.is_plot && res.plot_data) {
       // Render plot canvas
@@ -456,7 +419,7 @@ export class WorksheetManager {
     }
 
     // Mathematical formula rendering via KaTeX
-    const isNum = cell.mode === "numeric";
+    const isNum = cell.mode === "numeric" || this.globalMode === "numeric";
     const latexStr = isNum ? (res.numeric_latex || res.exact_latex) : (res.exact_latex || res.numeric_latex);
     const plainText = isNum ? (res.numeric_text || res.exact_text) : (res.exact_text || res.numeric_text);
 

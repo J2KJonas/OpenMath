@@ -5,14 +5,12 @@
 
 import { WorksheetManager } from "./worksheet.js";
 import { PaletteManager } from "./palette.js";
-import { MobileDockManager } from "./mobile-dock.js";
 
 class OpenMathApp {
   constructor() {
     this.worker = null;
     this.worksheet = null;
     this.palette = null;
-    this.mobileDock = null;
     let storedTheme = "dark";
     try {
       storedTheme = localStorage.getItem("openmath_theme") || "dark";
@@ -27,7 +25,6 @@ class OpenMathApp {
     this.initTheme();
     this.initWorksheet();
     this.initPalette();
-    this.initMobileDock();
     this.initWorker();
     this.bindHeaderEvents();
     this.bindExportModal();
@@ -185,55 +182,6 @@ class OpenMathApp {
       }
     });
     this.palette.init();
-  }
-
-  initMobileDock() {
-    const mobileInput = document.getElementById("mobile-formula-input");
-
-    this.mobileDock = new MobileDockManager(
-      (text, cursorOffset) => {
-        // If mobile input is focused, insert into it, otherwise worksheet cell
-        if (document.activeElement === mobileInput) {
-          const start = mobileInput.selectionStart || mobileInput.value.length;
-          const end = mobileInput.selectionEnd || mobileInput.value.length;
-          mobileInput.value = mobileInput.value.substring(0, start) + text + mobileInput.value.substring(end);
-          const nextPos = start + text.length + cursorOffset;
-          mobileInput.setSelectionRange(nextPos, nextPos);
-        } else if (this.worksheet) {
-          this.worksheet.insertTextAtCursor(text, cursorOffset);
-        }
-      },
-      () => {
-        // Execute active calculation
-        if (mobileInput && mobileInput.value.trim()) {
-          const cell = this.worksheet.addCell(mobileInput.value.trim(), true);
-          this.worksheet.evaluateCell(cell.id);
-          mobileInput.value = "";
-        } else if (this.worksheet && this.worksheet.activeCellId) {
-          this.worksheet.evaluateCell(this.worksheet.activeCellId);
-        }
-      },
-      () => {
-        // Backspace
-        if (document.activeElement === mobileInput) {
-          const start = mobileInput.selectionStart;
-          if (start > 0) {
-            mobileInput.value = mobileInput.value.substring(0, start - 1) + mobileInput.value.substring(start);
-            mobileInput.setSelectionRange(start - 1, start - 1);
-          }
-        } else if (this.worksheet) {
-          const inputEl = this.worksheet.getActiveInput();
-          if (inputEl) {
-            const start = inputEl.selectionStart;
-            if (start > 0) {
-              inputEl.value = inputEl.value.substring(0, start - 1) + inputEl.value.substring(start);
-              inputEl.setSelectionRange(start - 1, start - 1);
-            }
-          }
-        }
-      }
-    );
-    this.mobileDock.init();
   }
 
   bindHeaderEvents() {

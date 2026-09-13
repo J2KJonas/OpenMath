@@ -48,11 +48,19 @@ body.theme-dark, :root[data-theme="dark"] {
   --tag-in-text: #38bdf8;
   --tag-out-bg: rgba(16, 185, 129, 0.18);
   --tag-out-text: #10b981;
+
+  /* Authentic OpenMath Desktop Tokens */
+  --paper-bg: #1e2838;
+  --page-canvas-bg: #141b26;
+  --prompt-color: #fb7185;
+  --math-blue: #7dd3fc;
+  --bracket-color: #475569;
+  --bracket-focus-color: #38bdf8;
 }
 
 /* Academic Light Theme */
 body.theme-light, :root[data-theme="light"] {
-  --bg-app: #f1f5f9;
+  --bg-app: #ececec;
   --bg-header: #ffffff;
   --bg-sidebar: #f8fafc;
   --bg-surface: #ffffff;
@@ -61,13 +69,13 @@ body.theme-light, :root[data-theme="light"] {
   --bg-hover: #e2e8f0;
   --bg-active: #cbd5e1;
 
-  --border-color: #e2e8f0;
+  --border-color: #d9dcdf;
   --border-subtle: #edf2f7;
   --border-focus: #2563eb;
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
 
   --accent-primary: #2563eb;
   --accent-hover: #1d4ed8;
@@ -81,6 +89,14 @@ body.theme-light, :root[data-theme="light"] {
   --tag-in-text: #2563eb;
   --tag-out-bg: rgba(5, 150, 105, 0.12);
   --tag-out-text: #059669;
+
+  /* Authentic OpenMath Desktop Tokens */
+  --paper-bg: #ffffff;
+  --page-canvas-bg: #ececec;
+  --prompt-color: #b22222;
+  --math-blue: #0000aa;
+  --bracket-color: #7c8798;
+  --bracket-focus-color: #2563eb;
 }
 
 /* Universal Reset */
