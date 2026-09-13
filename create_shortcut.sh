@@ -75,50 +75,19 @@ PLIST_EOF
 # Write launcher script
 cat << LAUNCHER_EOF > "$APP_BUNDLE_DEST_APPS/Contents/MacOS/launcher"
 #!/bin/bash
-export PATH="/Library/Frameworks/Python.framework/Versions/3.14/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:\$PATH"
-
-# Always navigate to the repository directory
 REPO_DIR="${REPO_DIR}"
 cd "\$REPO_DIR" || exit 1
 
-# Detect Python interpreter (support virtualenvs, Homebrew on Apple Silicon, and official frameworks)
-PYTHON_EXEC=""
-if [ -x "\$REPO_DIR/.venv/bin/python3" ]; then
-    PYTHON_EXEC="\$REPO_DIR/.venv/bin/python3"
-elif [ -x "\$REPO_DIR/venv/bin/python3" ]; then
-    PYTHON_EXEC="\$REPO_DIR/venv/bin/python3"
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON_EXEC="\$(command -v python3)"
-elif [ -x "/opt/homebrew/bin/python3" ]; then
-    PYTHON_EXEC="/opt/homebrew/bin/python3"
-elif [ -x "/usr/local/bin/python3" ]; then
-    PYTHON_EXEC="/usr/local/bin/python3"
-elif [ -x "/Library/Frameworks/Python.framework/Versions/Current/bin/python3" ]; then
-    PYTHON_EXEC="/Library/Frameworks/Python.framework/Versions/Current/bin/python3"
-else
-    for py in /Library/Frameworks/Python.framework/Versions/3.*/bin/python3; do
-        if [ -x "\$py" ]; then
-            PYTHON_EXEC="\$py"
-            break
-        fi
-    done
-fi
-
-if [ -z "\$PYTHON_EXEC" ] || [ ! -x "\$PYTHON_EXEC" ]; then
-    osascript -e 'display alert "OpenMath Error" message "Python 3 could not be found. Please ensure Python 3.10+ is installed (e.g. via brew install python or python.org)." as critical' 2>/dev/null
-    exit 1
-fi
-
-# Determine native architecture (e.g. arm64 on Apple Silicon)
-NATIVE_ARCH="\$(uname -m)"
 ERR_LOG="/tmp/openmath_error.log"
 
-if [ "\$NATIVE_ARCH" = "arm64" ]; then
-    /usr/bin/arch -arm64 "\$PYTHON_EXEC" main.py "\$@" 2> "\$ERR_LOG"
+# Run universal launcher (handles virtual environment, dependencies & native architecture)
+if [ -x "./run.sh" ]; then
+    ./run.sh "\$@" 2> "\$ERR_LOG"
+    EXIT_CODE=\$?
 else
-    "\$PYTHON_EXEC" main.py "\$@" 2> "\$ERR_LOG"
+    /bin/bash "./run.sh" "\$@" 2> "\$ERR_LOG"
+    EXIT_CODE=\$?
 fi
-EXIT_CODE=\$?
 
 # If there was an error, show a friendly alert
 if [ \$EXIT_CODE -ne 0 ] && [ -s "\$ERR_LOG" ]; then

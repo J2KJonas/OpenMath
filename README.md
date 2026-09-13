@@ -124,7 +124,8 @@ pip install -r requirements.txt
 - *(Optional)* Create Desktop & Start Menu shortcuts: double-click **`create_shortcut_windows.bat`**
 
 #### macOS (Apple Silicon M1/M2/M3/M4 & Intel):
-- Run in terminal:
+- **One-Click Launch**: Double-click **`OpenMath.command`** (or **`run.command`**) directly in Finder. It automatically checks requirements, creates an isolated virtual environment and installs dependencies if needed, then launches OpenMath!
+- Or run in terminal:
   ```bash
   ./run.sh
   ```
@@ -173,6 +174,8 @@ pip install -r requirements.txt
 calculator/
 ├── main.py                     # Application entry point (High-DPI & taskbar configured)
 ├── run.py                      # Quick Python launcher script
+├── OpenMath.command            # One-click double-clickable launcher for macOS
+├── run.command                 # One-click launcher alias for macOS
 ├── run.bat                     # One-click launcher for Windows
 ├── run.sh                      # Universal launcher for macOS (Apple Silicon / Intel) & Linux
 ├── create_shortcut.sh          # macOS Application Bundle & Desktop shortcut generator
