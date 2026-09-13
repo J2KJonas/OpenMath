@@ -300,25 +300,20 @@ class OpenMathApp {
     const fileInput = document.getElementById("file-import-input");
     const importBtnDesktop = document.getElementById("btn-import-desktop");
     const importBtnMobile = document.getElementById("btn-import-mobile");
-    const importBtnSidebar = document.getElementById("btn-import-sidebar");
 
-    const triggerSelect = () => {
-      if (fileInput) fileInput.click();
+    // Keyboard accessibility for label-based import buttons
+    const handleKey = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (fileInput) fileInput.click();
+      }
     };
-
-    if (importBtnDesktop) importBtnDesktop.addEventListener("click", triggerSelect);
-    if (importBtnMobile) importBtnMobile.addEventListener("click", triggerSelect);
-    if (importBtnSidebar) {
-      importBtnSidebar.addEventListener("click", () => {
-        const sidebar = document.getElementById("app-sidebar");
-        if (sidebar) sidebar.classList.remove("open");
-        triggerSelect();
-      });
-    }
+    if (importBtnDesktop) importBtnDesktop.addEventListener("keydown", handleKey);
+    if (importBtnMobile) importBtnMobile.addEventListener("keydown", handleKey);
 
     if (fileInput) {
       fileInput.addEventListener("change", (e) => {
-        const file = e.target.files[0];
+        const file = e.target.files && e.target.files[0];
         if (!file) return;
 
         const statusText = document.getElementById("status-text");
@@ -349,6 +344,13 @@ class OpenMathApp {
             this.worker.postMessage({ type: "PARSE_DOCUMENT", content: content });
           }
         };
+
+        reader.onerror = (err) => {
+          console.error("FileReader error:", err);
+          if (statusText) statusText.textContent = `Error reading ${file.name}`;
+          alert(`Error reading file: ${file.name}`);
+        };
+
         reader.readAsText(file);
         fileInput.value = "";
       });

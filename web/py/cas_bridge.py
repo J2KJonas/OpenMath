@@ -167,9 +167,12 @@ def parse_worksheet_document(content: str) -> dict:
                     "mode": "text" if c.get('input_mode') == WorksheetIO.MODE_TEXT else "math",
                     "title": ""
                 })
-        return {"cells": parsed, "error": None}
-    except Exception as e:
-        # Plain text fallback: line by line or [In n] blocks
+        if parsed:
+            return {"cells": parsed, "error": None}
+    except Exception:
+        pass
+
+    # Plain text fallback: line by line or [In n] blocks
         lines = [line.strip() for line in stripped.splitlines() if line.strip()]
         fallback_cells = []
         for line in lines:

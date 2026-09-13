@@ -42,7 +42,7 @@
       </button>
       <div class="app-brand">
         <img src="./favicon.png" alt="OpenMath" class="brand-icon" width="28" height="28" />
-        <span class="brand-name">OpenMath <span class="brand-badge">Web</span></span>
+        <span class="brand-name">OpenMath</span>
       </div>
     </div>
 
@@ -68,21 +68,21 @@
     </div>
 
     <div class="header-right">
-      <input type="file" id="file-import-input" accept=".mw,.mv,.json,.txt,.md" style="display:none;" />
+      <input type="file" id="file-import-input" accept="*/*" style="position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px;" />
 
       <button id="btn-add-cell-top" class="header-btn desktop-only" title="New Calculation Cell">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>Add Cell</span>
       </button>
 
-      <button id="btn-import-desktop" class="header-btn desktop-only" title="Import Worksheet (.mw, .mv, .json)">
+      <label id="btn-import-desktop" for="file-import-input" class="header-btn desktop-only" title="Import Worksheet" role="button" tabindex="0">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <span>Import</span>
-      </button>
+      </label>
 
-      <button id="btn-import-mobile" class="icon-btn mobile-only" title="Import Worksheet (.mw, .mv, .json)">
+      <label id="btn-import-mobile" for="file-import-input" class="icon-btn mobile-only" title="Import" aria-label="Import" role="button" tabindex="0">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </button>
+      </label>
 
       <button id="btn-export" class="header-btn" title="Export Worksheet">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -114,14 +114,6 @@
         <span class="sidebar-title">Math Palettes</span>
         <button id="close-sidebar-btn" class="icon-btn mobile-only" title="Close Sidebar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <!-- Quick Import Button in Sidebar -->
-      <div class="sidebar-import-banner" style="padding: 10px 14px; border-bottom: 1px solid var(--border-subtle);">
-        <button id="btn-import-sidebar" class="palette-btn special-btn" style="width: 100%; padding: 8px 12px; gap: 6px; font-size: 13px;" title="Load .mw, .mv, or .json file">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          <span>📂 Import .mw Document</span>
         </button>
       </div>
 

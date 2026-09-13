@@ -138,6 +138,25 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
+/* Interactive Header & Action Buttons (button & label) */
+.icon-btn,
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.icon-btn *,
+.header-btn * {
+  pointer-events: none;
+}
+
 /* Icon Button */
 .icon-btn {
   width: 34px;
@@ -168,6 +187,7 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--bg-hover);
   border-color: var(--text-muted);
 }
+
 
 /* Loading Splash Overlay */
 .loading-overlay {
