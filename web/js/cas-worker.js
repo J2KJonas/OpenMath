@@ -26,7 +26,7 @@ const CAS_ENGINE_FILES = [
   "mw_importer.py"
 ];
 
-async function initPyodideRuntime(basePath = "") {
+async function initPyodideRuntime(basePath = "../") {
   try {
     postMessage({ type: "STATUS", status: "loading", message: "Starting Python WebAssembly runtime..." });
 

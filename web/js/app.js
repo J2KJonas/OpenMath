@@ -112,7 +112,7 @@ class OpenMathApp {
       };
 
       // Start initialization
-      this.worker.postMessage({ type: "INIT", basePath: "./" });
+      this.worker.postMessage({ type: "INIT", basePath: "../" });
     } catch (err) {
       console.error("Failed to start Web Worker:", err);
       if (loadingStatus) loadingStatus.textContent = `Worker Error: ${err.message}`;
