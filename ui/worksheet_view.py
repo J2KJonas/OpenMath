@@ -175,16 +175,16 @@ class WorksheetContainer(QWidget):
         if (event.buttons() & Qt.MouseButton.LeftButton) and self._drag_start_pos is not None:
             pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
             dy = abs(pos.y() - self._drag_start_pos.y())
-            if dy > 12:
-                self._is_dragging = True
+            if dy > 25:
                 min_y = min(self._drag_start_pos.y(), pos.y())
                 max_y = max(self._drag_start_pos.y(), pos.y())
                 dragged_cells = []
                 for cell in self.ws_view.cells:
                     geo = cell.geometry()
-                    if not (geo.bottom() < min_y or geo.top() > max_y):
+                    if geo.bottom() - 8 >= min_y and geo.top() + 8 <= max_y:
                         dragged_cells.append(cell)
-                if dragged_cells:
+                if len(dragged_cells) > 1:
+                    self._is_dragging = True
                     self.ws_view.clear_cell_selection()
                     for c in dragged_cells:
                         c.set_cell_selected(True)
@@ -875,6 +875,10 @@ class WorksheetView(QWidget):
             try:
                 if not sip.isdeleted(c) and hasattr(c, 'set_cell_selected'):
                     c.set_cell_selected(False)
+                if not sip.isdeleted(c) and hasattr(c, 'input_edit') and c.input_edit:
+                    c.input_edit._selected_table = None
+                    c.input_edit._active_table = None
+                    c.input_edit.viewport().update()
             except Exception:
                 pass
         if hasattr(self, 'selected_cells'):

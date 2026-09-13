@@ -194,6 +194,7 @@ class WorksheetIO:
                     bg = font.attrib.get('background', '')
                     ftxt = ''.join(font.itertext()).strip()
                     ftxt = re.sub(r'\bJSFH\b', '', ftxt).strip()
+                    ftxt = cls.clean_octal_escapes(ftxt)
                     if bg and ftxt:
                         has_font_bg = True
                         m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', bg)
@@ -233,13 +234,7 @@ class WorksheetIO:
                 exec_idx += 1
 
         def _clean_octal_escapes(s: str) -> str:
-            def repl(m):
-                try:
-                    oct_bytes = bytes(int(x, 8) for x in re.findall(r'\\([0-7]{3})', m.group(0)))
-                    return oct_bytes.decode('utf-8', errors='replace')
-                except Exception:
-                    return m.group(0)
-            return re.sub(r'(?:\\[0-7]{3})+', repl, s)
+            return cls.clean_octal_escapes(s)
 
         def process_table(table_elem: ET.Element, depth: int):
             nonlocal exec_idx
@@ -425,7 +420,7 @@ class WorksheetIO:
                             for font in fonts:
                                 bg = font.attrib.get('background', '')
                                 fg = font.attrib.get('foreground', '') or font.attrib.get('color', '')
-                                ftxt = ''.join(font.itertext())
+                                ftxt = cls.clean_octal_escapes(''.join(font.itertext()))
                                 bg_val = _parse_worksheet_color(bg)
                                 fg_val = _parse_worksheet_color(fg)
                                 if bg_val:
@@ -440,9 +435,9 @@ class WorksheetIO:
                                 style_str = " ".join(style_items)
                                 html_parts.append(f'<span style="{style_str}">{ftxt}</span>')
                                 if font.tail:
-                                    html_parts.append(f"<span>{font.tail}</span>")
+                                    html_parts.append(f"<span>{cls.clean_octal_escapes(font.tail)}</span>")
                         else:
-                            txt = ''.join(tf.itertext()).strip()
+                            txt = cls.clean_octal_escapes(''.join(tf.itertext()).strip())
                             tf_bg = tf.attrib.get('background', '')
                             tf_fg = tf.attrib.get('foreground', '') or tf.attrib.get('color', '')
                             bg_val = _parse_worksheet_color(tf_bg)
@@ -460,8 +455,8 @@ class WorksheetIO:
                             if txt:
                                 html_parts.append(f'<span style="{style_str}">{txt}</span>')
                         if tf.tail:
-                            html_parts.append(f"<span>{tf.tail}</span>")
-                    title_text = ''.join(title_elem.itertext()).strip()
+                            html_parts.append(f"<span>{cls.clean_octal_escapes(tf.tail)}</span>")
+                    title_text = cls.clean_octal_escapes(''.join(title_elem.itertext()).strip())
 
                 sec_cell = {
                     'cell_id': str(uuid.uuid4())[:8],
@@ -652,7 +647,48 @@ class WorksheetIO:
             if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input', 'Text-field', 'Table'):
                 process_element(child, 0)
 
-        return cells_data
+        # Merge consecutive plain-text document cells within the same section
+        merged_cells: List[Dict[str, Any]] = []
+        for cell in cells_data:
+            if (merged_cells and
+                not cell.get('is_section_header') and
+                not merged_cells[-1].get('is_section_header') and
+                cell.get('section_level') == merged_cells[-1].get('section_level') and
+                cell.get('input_mode') == cls.MODE_TEXT and
+                merged_cells[-1].get('input_mode') == cls.MODE_TEXT and
+                not cell.get('result') and not merged_cells[-1].get('result') and
+                not cell.get('embedded_images') and not merged_cells[-1].get('embedded_images') and
+                '<table' not in cell.get('input', '').lower() and '<table' not in merged_cells[-1].get('input', '').lower() and
+                not cell.get('spans') and not merged_cells[-1].get('spans')):
+                
+                prev_input = merged_cells[-1].get('input', '').rstrip()
+                cur_input = cell.get('input', '').lstrip()
+                if not prev_input.startswith('#') and not cur_input.startswith('#'):
+                    if '<' in prev_input or '<' in cur_input:
+                        merged_cells[-1]['input'] = prev_input + '<br/>' + cur_input
+                    else:
+                        merged_cells[-1]['input'] = prev_input + '\n' + cur_input
+                    continue
+
+            merged_cells.append(cell)
+
+        for idx, cell in enumerate(merged_cells, 1):
+            cell['execution_idx'] = idx
+
+        return merged_cells
+
+    @classmethod
+    def clean_octal_escapes(cls, s: str) -> str:
+        """Decode octal escape sequences (e.g. \\303\\270 -> ø) common in Maple .mw non-ASCII text."""
+        if not s or '\\' not in s:
+            return s or ""
+        def repl(m):
+            try:
+                oct_bytes = bytes(int(x, 8) for x in re.findall(r'\\([0-7]{3})', m.group(0)))
+                return oct_bytes.decode('utf-8', errors='replace')
+            except Exception:
+                return m.group(0)
+        return re.sub(r'(?:\\[0-7]{3})+', repl, s)
 
     @classmethod
     def _extract_tf_text(cls, tf: ET.Element) -> str:
@@ -674,6 +710,7 @@ class WorksheetIO:
         raw = "".join(parts).strip()
         cleaned = re.sub(r'\bJSFH\b', '', raw).strip()
         cleaned = re.sub(r'LUkl[A-Za-z0-9+/=]+', '', cleaned).strip()
+        cleaned = cls.clean_octal_escapes(cleaned)
         return cleaned
 
     @classmethod

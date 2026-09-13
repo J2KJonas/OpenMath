@@ -6546,6 +6546,17 @@ class CellInputEdit(QTextEdit):
         if self.parent_cell:
             self.parent_cell._on_cursor_changed()
 
+    def focusOutEvent(self, event):
+        had_overlay = (getattr(self, '_selected_table', None) is not None or
+                       getattr(self, '_active_table', None) is not None or
+                       getattr(self, '_selected_image_pos', None) is not None)
+        self._selected_table = None
+        self._active_table = None
+        self._selected_image_pos = None
+        if had_overlay:
+            self.viewport().update()
+        super().focusOutEvent(event)
+
     def _cleanup_orphaned_fractions(self) -> bool:
         """Find and remove any frac_widgets whose image placeholder is no longer in the document."""
         if not hasattr(self, 'frac_widgets') or not self.frac_widgets:
@@ -9809,44 +9820,47 @@ class CellInputEdit(QTextEdit):
         return tables
 
     def _get_table_geometry(self, table: QTextTable) -> QRectF:
-        """Get viewport bounding rectangle for a QTextTable accurately encompassing all cells."""
-        cols = table.columns()
-        rows = table.rows()
+        """Get viewport bounding rectangle for a QTextTable using frameBoundingRect (outer frame)."""
         layout = self.document().documentLayout()
         h_scroll = self.horizontalScrollBar().value()
         v_scroll = self.verticalScrollBar().value()
 
-        if cols <= 0 or rows <= 0 or not layout:
-            doc_rect = layout.frameBoundingRect(table) if layout else QRectF(0, 0, 100, 100)
-            return QRectF(doc_rect.x() - h_scroll, doc_rect.y() - v_scroll, doc_rect.width(), doc_rect.height())
+        if not layout:
+            return QRectF(0, 0, 100, 100)
 
-        min_x = 999999.0
-        min_y = 999999.0
-        max_x = -999999.0
-        max_y = -999999.0
+        try:
+            doc_rect = layout.frameBoundingRect(table)
+            if doc_rect.isValid() and doc_rect.width() > 0 and doc_rect.height() > 0:
+                return QRectF(
+                    doc_rect.x() - h_scroll,
+                    doc_rect.y() - v_scroll,
+                    doc_rect.width(),
+                    doc_rect.height()
+                )
+        except Exception:
+            pass
 
+        # Fallback: derive from cell block bounding rects
+        cols = table.columns()
+        rows = table.rows()
+        if cols <= 0 or rows <= 0:
+            return QRectF(0, 0, 100, 100)
+
+        min_x, min_y = 999999.0, 999999.0
+        max_x, max_y = -999999.0, -999999.0
         for r in range(rows):
             for c in range(cols):
                 cell = table.cellAt(r, c)
                 if not cell.isValid():
                     continue
-                c_start = cell.firstCursorPosition()
-                c_end = cell.lastCursorPosition()
-                b1 = layout.blockBoundingRect(c_start.block())
-                b2 = layout.blockBoundingRect(c_end.block())
+                b1 = layout.blockBoundingRect(cell.firstCursorPosition().block())
+                b2 = layout.blockBoundingRect(cell.lastCursorPosition().block())
                 min_x = min(min_x, b1.left(), b2.left())
                 min_y = min(min_y, b1.top(), b2.top())
                 max_x = max(max_x, b1.right(), b2.right())
                 max_y = max(max_y, b1.bottom(), b2.bottom())
 
-        if min_x > max_x or min_y > max_y:
-            doc_rect = layout.frameBoundingRect(table)
-            min_x, min_y = doc_rect.x(), doc_rect.y()
-            max_x, max_y = min_x + doc_rect.width(), min_y + doc_rect.height()
-
-        vx = min_x - h_scroll
-        vy = min_y - v_scroll
-        return QRectF(vx, vy, max(20.0, max_x - min_x), max(20.0, max_y - min_y))
+        return QRectF(min_x - h_scroll, min_y - v_scroll, max(20.0, max_x - min_x), max(20.0, max_y - min_y))
 
     def _get_table_col_divider_xs(self, table: QTextTable):
         """Return list of (col_idx, divider_x_in_viewport) for vertical dividers."""
@@ -10098,6 +10112,12 @@ class CellInputEdit(QTextEdit):
                     self.viewport().update()
                     event.accept()
                     return
+            else:
+                # Clicking outside any table - clear table selection/highlight
+                if getattr(self, '_selected_table', None) is not None or getattr(self, '_active_table', None) is not None:
+                    self._selected_table = None
+                    self._active_table = None
+                    self.viewport().update()
 
         # 1. Check if clicking on an image corner resize handle
         if event.button() == Qt.MouseButton.LeftButton:
@@ -11530,8 +11550,15 @@ class SectionHeaderRow(QWidget):
                     ws.select_cell(self.parent_cell, range_select=True)
                 else:
                     ws.clear_cell_selection()
+                    ws.active_cell = self.parent_cell
+                    try:
+                        ws.activeCellChanged.emit(self.parent_cell)
+                    except Exception:
+                        pass
             if hasattr(self.parent_cell, 'title_edit'):
                 self.parent_cell.title_edit.setFocus()
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def contextMenuEvent(self, event):
@@ -11775,13 +11802,16 @@ class WorksheetCell(QFrame):
     def _update_selection_style(self):
         if getattr(self, 'is_selected', False):
             is_dark = (getattr(self, 'theme_mode', 'light') == 'dark')
-            bg = "#1e3a8a" if is_dark else "#e0f2fe"
-            border = "#60a5fa" if is_dark else "#38bdf8"
+            bg = "rgba(30,58,138,0.18)" if is_dark else "rgba(56,189,248,0.10)"
+            bar = "#60a5fa" if is_dark else "#38bdf8"
             self.setStyleSheet(f"""
                 QFrame#cellExecutionGroup {{
                     background-color: {bg};
-                    border: 1.5px solid {border};
-                    border-radius: 4px;
+                    border-left: 3px solid {bar};
+                    border-top: none;
+                    border-right: none;
+                    border-bottom: none;
+                    border-radius: 0px;
                 }}
             """)
         else:
@@ -11800,8 +11830,14 @@ class WorksheetCell(QFrame):
                 event.accept()
                 return
             else:
-                if ws and getattr(ws, 'selected_cells', None) and len(ws.selected_cells) > 0:
-                    ws.clear_cell_selection()
+                if ws:
+                    if getattr(ws, 'selected_cells', None) and len(ws.selected_cells) > 0:
+                        ws.clear_cell_selection()
+                    ws.active_cell = self
+                    try:
+                        ws.activeCellChanged.emit(self)
+                    except Exception:
+                        pass
 
         if not getattr(self, 'is_section_header', False):
             self.input_edit.setFocus()
