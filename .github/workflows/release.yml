@@ -1,0 +1,101 @@
+name: Build & Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os_title }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            os_title: Windows x64
+            asset_name: OpenMath-Windows-x64.zip
+          - os: macos-14
+            os_title: macOS Apple Silicon (ARM64)
+            asset_name: OpenMath-macOS-arm64.zip
+          - os: macos-13
+            os_title: macOS Intel (x86_64)
+            asset_name: OpenMath-macOS-intel.zip
+          - os: ubuntu-latest
+            os_title: Linux x64
+            asset_name: OpenMath-Linux-x64.tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 \
+            libgl1-mesa-glx \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconsole --name "OpenMath" --icon "resources/AppIcon.ico" --add-data "resources;resources" --collect-all matplotlib --collect-all sympy main.py
+          xcopy /E /I resources dist\OpenMath\resources
+          Compress-Archive -Path dist/OpenMath -DestinationPath dist/${{ matrix.asset_name }}
+
+      - name: Build Binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconsole --windowed --name "OpenMath" --icon "resources/AppIcon.icns" --add-data "resources:resources" --collect-all matplotlib --collect-all sympy main.py
+          cp -r resources dist/OpenMath.app/Contents/Resources/
+          cd dist
+          zip -r ${{ matrix.asset_name }} OpenMath.app
+
+      - name: Build Binary (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          pyinstaller --name "OpenMath" --icon "resources/AppIcon.png" --add-data "resources:resources" --collect-all matplotlib --collect-all sympy main.py
+          cp -r resources dist/OpenMath/resources
+          cd dist
+          tar -czvf ${{ matrix.asset_name }} OpenMath
+
+      - name: Upload Artifact (Actions tab backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.asset_name }}
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        with:
+          files: dist/${{ matrix.asset_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
