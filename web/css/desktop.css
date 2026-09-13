@@ -1,0 +1,527 @@
+/**
+ * OpenMath Web - Desktop Layout & Workstation Styles
+ */
+
+/* Header Bar */
+.app-header {
+  height: 52px;
+  background-color: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.header-left, .header-center, .header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.brand-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+/* Global Mode Toggle Pill */
+.mode-pill-group {
+  display: inline-flex;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.pill-option {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.pill-option.active {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Precision Picker */
+.precision-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.precision-picker select {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Main Layout Grid */
+.app-main-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  height: calc(100vh - 52px - 28px);
+  overflow: hidden;
+}
+
+/* Sidebar */
+.app-sidebar {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.palettes-container {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+
+.palette-section {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.palette-section-header {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.palette-section-header:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chevron-icon {
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+  transform: rotate(90deg);
+}
+
+.palette-section-body {
+  padding: 10px 14px;
+  display: grid;
+  gap: 6px;
+  background-color: var(--bg-sidebar);
+}
+
+.grid-templates {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-funcs {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-symbols {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.palette-btn {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.special-btn {
+  grid-column: span 2;
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.special-btn:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Worksheet Area */
+.worksheet-main {
+  background-color: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.worksheet-container {
+  padding: 24px 32px;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+  flex: 1;
+}
+
+.worksheet-cell {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+  overflow: hidden;
+}
+
+.worksheet-cell.focused {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.worksheet-cell.calculating {
+  border-color: var(--accent-primary);
+}
+
+.cell-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--bg-surface);
+}
+
+.cell-in-tag {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background-color: var(--tag-in-bg);
+  color: var(--tag-in-text);
+  letter-spacing: 0.5px;
+}
+
+.cell-out-tag {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background-color: var(--tag-out-bg);
+  color: var(--tag-out-text);
+  letter-spacing: 0.5px;
+}
+
+.cell-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  gap: 4px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.cell-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btn-eval {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.btn-eval:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.cell-input-row {
+  padding: 12px 16px;
+}
+
+.cell-input {
+  width: 100%;
+  min-height: 42px;
+  background-color: transparent;
+  border: none;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  resize: none;
+}
+
+.cell-input:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.cell-output-row {
+  border-top: 1px dashed var(--border-color);
+  background-color: var(--bg-surface);
+  padding: 12px 16px;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.output-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mode-switch-pill {
+  display: inline-flex;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 1px;
+}
+
+.pill-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  color: var(--text-muted);
+}
+
+.pill-btn.active {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.copy-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+.copy-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.copy-btn.copied {
+  background-color: var(--color-success);
+  color: #ffffff;
+  border-color: var(--color-success);
+}
+
+.timing-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.output-content {
+  padding: 6px 0;
+  min-height: 32px;
+}
+
+.katex-rendered-output {
+  font-size: 18px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.plain-text-output {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.cell-calculating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent-primary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 0;
+}
+
+.cell-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: rgba(244, 63, 94, 0.12);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  color: var(--color-error);
+  font-size: 13px;
+}
+
+.worksheet-footer-bar {
+  padding: 12px 32px 36px 32px;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.btn-add-cell {
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  gap: 8px;
+}
+
+.btn-add-cell:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background-color: var(--accent-subtle);
+}
+
+/* Matrix Wizard Controls */
+.matrix-dimension-controls {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dim-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.dim-group input, .dim-group select {
+  padding: 6px 10px;
+}
+
+.matrix-grid-scroll {
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+}
+
+.matrix-grid-container {
+  display: grid;
+  gap: 8px;
+  justify-content: center;
+}
+
+.matrix-cell-input {
+  width: 100%;
+  height: 38px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Export Options */
+.export-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-opt-btn {
+  padding: 12px 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+}
+
+.export-opt-btn:hover {
+  border-color: var(--accent-primary);
+  background-color: var(--bg-hover);
+}
+
+.opt-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.opt-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Responsive Visibility Helpers */
+.desktop-only {
+  display: inline-flex;
+}
+
+.mobile-only {
+  display: none !important;
+}

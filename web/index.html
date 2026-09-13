@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="OpenMath - High-Performance Symbolic Mathematics CAS Calculator on the Web" />
+  <meta name="theme-color" content="#1e222b" />
+  <title>OpenMath Web | Symbolic CAS Calculator</title>
+
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="manifest" href="./manifest.json" />
+
+  <!-- KaTeX CSS & JS for high-DPI mathematical typesetting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+  <!-- Application Stylesheets -->
+  <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/desktop.css" />
+  <link rel="stylesheet" href="./css/mobile.css" />
+</head>
+<body class="theme-dark">
+  <!-- Loading Splash Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-card">
+      <div class="loading-logo">
+        <img src="./favicon.png" alt="OpenMath Logo" width="64" height="64" />
+      </div>
+      <h2>OpenMath Web</h2>
+      <p class="loading-subtitle">Symbolic CAS & Mathematics Engine</p>
+      <div class="spinner"></div>
+      <div id="loading-status" class="loading-status">Initializing Python WebAssembly runtime...</div>
+      <div class="loading-note">Calculations run 100% in your browser powered by Pyodide & SymPy.</div>
+    </div>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <button id="mobile-menu-toggle" class="icon-btn mobile-only" title="Toggle Palettes">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="app-brand">
+        <img src="./favicon.png" alt="OpenMath" class="brand-icon" width="28" height="28" />
+        <span class="brand-name">OpenMath <span class="brand-badge">Web</span></span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <!-- Exact vs Numeric Global Toggle -->
+      <div class="mode-pill-group" title="Global Math Evaluation Mode">
+        <button id="global-mode-exact" class="pill-option active">Exact</button>
+        <button id="global-mode-numeric" class="pill-option">Numeric</button>
+      </div>
+
+      <!-- Precision Selector -->
+      <div class="precision-picker" title="Calculation Precision (Decimal Digits)">
+        <span class="picker-label">Digits:</span>
+        <select id="global-precision-select">
+          <option value="4">4</option>
+          <option value="6" selected>6</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button id="btn-add-cell-top" class="header-btn desktop-only" title="New Calculation Cell">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Add Cell</span>
+      </button>
+
+      <button id="btn-export" class="header-btn" title="Export Worksheet">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="desktop-only">Export</span>
+      </button>
+
+      <button id="btn-clear-all" class="header-btn" title="Clear all worksheet cells">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <span class="desktop-only">Clear</span>
+      </button>
+
+      <!-- Theme Switcher (Dark / Light) -->
+      <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">
+        <svg id="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+
+      <a href="https://github.com/J2KJonas/OpenMath" target="_blank" rel="noopener noreferrer" class="icon-btn desktop-only" title="View GitHub Repository">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Application Body Layout -->
+  <div class="app-main-layout">
+    <!-- Collapsible Desktop/Mobile Sidebar with Math Palettes -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Math Palettes</span>
+        <button id="close-sidebar-btn" class="icon-btn mobile-only" title="Close Sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="palettes-container">
+        <!-- 1. Expression Templates -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Templates</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-templates">
+            <button class="palette-btn" data-insert="diff(x, x)" title="Derivative">d/dx</button>
+            <button class="palette-btn" data-insert="integrate(x, x)" title="Indefinite Integral">∫ dx</button>
+            <button class="palette-btn" data-insert="integrate(x, (x, 0, 1))" title="Definite Integral">∫[a,b]</button>
+            <button class="palette-btn" data-insert="limit(x, x, 0)" title="Limit">lim</button>
+            <button class="palette-btn" data-insert="Sum(i, (i, 1, n))" title="Summation">∑</button>
+            <button class="palette-btn" data-insert="sqrt(x)" title="Square Root">√x</button>
+            <button class="palette-btn" data-insert="root(x, 3)" title="N-th Root">ⁿ√x</button>
+            <button class="palette-btn" data-insert="abs(x)" title="Absolute Value">|x|</button>
+            <button class="palette-btn" data-insert="(a)/(b)" title="Fraction">a/b</button>
+            <button class="palette-btn" data-insert="x^2" title="Power">x²</button>
+          </div>
+        </div>
+
+        <!-- 2. Algebra -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Algebra</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-funcs">
+            <button class="palette-btn" data-insert="expand()" data-cursor-offset="-1">expand</button>
+            <button class="palette-btn" data-insert="factor()" data-cursor-offset="-1">factor</button>
+            <button class="palette-btn" data-insert="simplify()" data-cursor-offset="-1">simplify</button>
+            <button class="palette-btn" data-insert="solve(x^2 - 4 = 0, x)" title="Solve Equation">solve</button>
+            <button class="palette-btn" data-insert="apart()" data-cursor-offset="-1" title="Partial Fractions">apart</button>
+            <button class="palette-btn" data-insert="together()" data-cursor-offset="-1" title="Combine Fractions">together</button>
+            <button class="palette-btn" data-insert="trigsimp()" data-cursor-offset="-1">trigsimp</button>
+            <button class="palette-btn" data-insert=" := " title="Assign function or variable">:=</button>
+          </div>
+        </div>
+
+        <!-- 3. Calculus -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Calculus</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-funcs">
+            <button class="palette-btn" data-insert="diff(sin(x), x)">diff</button>
+            <button class="palette-btn" data-insert="integrate(cos(x), x)">integrate</button>
+            <button class="palette-btn" data-insert="series(sin(x), x, 0, 6)">series</button>
+            <button class="palette-btn" data-insert="dsolve(diff(y(x), x) - y(x), y(x))">dsolve</button>
+            <button class="palette-btn" data-insert="plot(sin(x), (x, -5, 5))">plot</button>
+            <button class="palette-btn" data-insert="polygonOmraade(Uligheder, x=0..10, y=0..10)">polygon</button>
+          </div>
+        </div>
+
+        <!-- 4. Linear Algebra -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Linear Algebra</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-funcs">
+            <button id="open-matrix-wizard" class="palette-btn special-btn">✨ Matrix Wizard</button>
+            <button class="palette-btn" data-insert="det()" data-cursor-offset="-1">det</button>
+            <button class="palette-btn" data-insert="inv()" data-cursor-offset="-1">inv</button>
+            <button class="palette-btn" data-insert="rref()" data-cursor-offset="-1">rref</button>
+            <button class="palette-btn" data-insert="eigenvals()" data-cursor-offset="-1">eigenvals</button>
+            <button class="palette-btn" data-insert="eigenvects()" data-cursor-offset="-1">eigenvects</button>
+            <button class="palette-btn" data-insert="transpose()" data-cursor-offset="-1">transpose</button>
+            <button class="palette-btn" data-insert="rank()" data-cursor-offset="-1">rank</button>
+          </div>
+        </div>
+
+        <!-- 5. Greek & Symbols -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Greek & Symbols</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-symbols">
+            <button class="palette-btn" data-insert="alpha">α</button>
+            <button class="palette-btn" data-insert="beta">β</button>
+            <button class="palette-btn" data-insert="gamma">γ</button>
+            <button class="palette-btn" data-insert="delta">δ</button>
+            <button class="palette-btn" data-insert="theta">θ</button>
+            <button class="palette-btn" data-insert="lambda">λ</button>
+            <button class="palette-btn" data-insert="mu">μ</button>
+            <button class="palette-btn" data-insert="pi">π</button>
+            <button class="palette-btn" data-insert="sigma">σ</button>
+            <button class="palette-btn" data-insert="phi">φ</button>
+            <button class="palette-btn" data-insert="omega">ω</button>
+            <button class="palette-btn" data-insert="oo">∞</button>
+          </div>
+        </div>
+
+        <!-- 6. Embedded Hardware & Electronics -->
+        <div class="palette-section">
+          <div class="palette-section-header">
+            <span>Embedded & Hardware</span>
+            <span class="chevron-icon">›</span>
+          </div>
+          <div class="palette-section-body grid-funcs">
+            <button class="palette-btn" data-insert="to_bin(42, 8)">to_bin</button>
+            <button class="palette-btn" data-insert="to_hex(255, 8)">to_hex</button>
+            <button class="palette-btn" data-insert="twos_comp_repr(-5, 8)">twos_comp</button>
+            <button class="palette-btn" data-insert="to_q(3.14, 7, 8)">to_q</button>
+            <button class="palette-btn" data-insert="ieee754(12.375)">ieee754</button>
+            <button class="palette-btn" data-insert="adc_volt(512, 3.3, 10)">adc_volt</button>
+            <button class="palette-btn" data-insert="rc_cutoff(10*kOhm, 100*nF)">rc_cutoff</button>
+            <button class="palette-btn" data-insert="ubrr_calc(16*MHz, 9600)">ubrr_calc</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Central Worksheet Area -->
+    <main class="worksheet-main">
+      <div id="worksheet-container" class="worksheet-container">
+        <!-- Dynamic [In n] and [Out n] Calculation Cells will be injected here -->
+      </div>
+
+      <div class="worksheet-footer-bar">
+        <button id="btn-add-cell-bottom" class="btn-add-cell">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Add Calculation Cell</span>
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Bottom Status Bar -->
+  <footer class="app-status-bar">
+    <div class="status-left">
+      <span id="status-indicator" class="status-dot"></span>
+      <span id="status-text">Connecting to Python WASM runtime...</span>
+    </div>
+    <div class="status-right desktop-only">
+      <span class="status-hint"><kbd>Shift</kbd> + <kbd>Enter</kbd> to evaluate</span>
+      <span id="engine-version" class="engine-tag">SymPy + Python 3.11</span>
+    </div>
+  </footer>
+
+  <!-- Phone / Mobile Math Dock & Virtual Keypad -->
+  <div id="mobile-math-dock" class="mobile-math-dock mobile-only">
+    <!-- Quick Symbol Horizontal Scroll Bar -->
+    <div class="quick-symbol-ribbon">
+      <button class="key-btn" data-insert="x">x</button>
+      <button class="key-btn" data-insert="y">y</button>
+      <button class="key-btn" data-insert="^" title="Power">^</button>
+      <button class="key-btn" data-insert="sqrt()" data-cursor-offset="-1" title="Square root">√</button>
+      <button class="key-btn" data-insert="(">(</button>
+      <button class="key-btn" data-insert=")">)</button>
+      <button class="key-btn" data-insert=" + ">+</button>
+      <button class="key-btn" data-insert=" - ">-</button>
+      <button class="key-btn" data-insert=" * ">*</button>
+      <button class="key-btn" data-insert=" / ">/</button>
+      <button class="key-btn" data-insert=" := ">:=</button>
+      <button class="key-btn" data-insert="pi">π</button>
+      <button class="key-btn" data-insert="diff()" data-cursor-offset="-1">diff</button>
+      <button class="key-btn" data-insert="solve()" data-cursor-offset="-1">solve</button>
+      <button class="key-btn" data-insert="det()" data-cursor-offset="-1">det</button>
+    </div>
+
+    <!-- Bottom Input Dock Controls -->
+    <div class="mobile-dock-input-bar">
+      <button id="mobile-dock-toggle" class="mobile-dock-btn" title="Toggle Mobile Keypad">
+        <svg id="mobile-dock-toggle-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>
+      </button>
+      <input type="text" id="mobile-formula-input" placeholder="Type math formula..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+      <button id="mobile-run-btn" class="mobile-run-btn" title="Execute calculation">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+    </div>
+
+    <!-- Expandable Mobile Keypad Drawer -->
+    <div id="mobile-keypad-drawer" class="mobile-keypad-drawer">
+      <div class="keypad-tabs-header">
+        <button class="keypad-tab-btn active" data-tab="123">123</button>
+        <button class="keypad-tab-btn" data-tab="fx">fx</button>
+        <button class="keypad-tab-btn" data-tab="calc">calc</button>
+        <button class="keypad-tab-btn" data-tab="matrix">matrix</button>
+        <button class="keypad-tab-btn" data-tab="sym">αβ</button>
+        <button class="keypad-tab-btn" data-tab="embed">embed</button>
+      </div>
+
+      <!-- Tab: 123 Basic Numbers & Arithmetic -->
+      <div class="keypad-tab-content active" data-tab-content="123">
+        <div class="touch-grid-keypad">
+          <button class="key-btn">7</button>
+          <button class="key-btn">8</button>
+          <button class="key-btn">9</button>
+          <button class="key-btn op-key" data-insert=" / ">/</button>
+          <button class="key-btn" data-insert="(">(</button>
+          <button class="key-btn" data-insert=")">)</button>
+
+          <button class="key-btn">4</button>
+          <button class="key-btn">5</button>
+          <button class="key-btn">6</button>
+          <button class="key-btn op-key" data-insert=" * ">*</button>
+          <button class="key-btn var-key">x</button>
+          <button class="key-btn var-key">y</button>
+
+          <button class="key-btn">1</button>
+          <button class="key-btn">2</button>
+          <button class="key-btn">3</button>
+          <button class="key-btn op-key" data-insert=" - ">-</button>
+          <button class="key-btn op-key" data-insert="^">^</button>
+          <button class="key-btn op-key" data-insert="sqrt()" data-cursor-offset="-1">√</button>
+
+          <button class="key-btn">0</button>
+          <button class="key-btn">.</button>
+          <button class="key-btn" data-insert=" = ">=</button>
+          <button class="key-btn op-key" data-insert=" + ">+</button>
+          <button class="key-btn op-key" data-insert=" := ">:=</button>
+          <button class="key-btn backspace-key" data-action="backspace">⌫</button>
+        </div>
+      </div>
+
+      <!-- Tab: fx Algebraic Functions -->
+      <div class="keypad-tab-content" data-tab-content="fx">
+        <div class="touch-grid-keypad funcs-grid">
+          <button class="key-btn" data-insert="expand()" data-cursor-offset="-1">expand</button>
+          <button class="key-btn" data-insert="factor()" data-cursor-offset="-1">factor</button>
+          <button class="key-btn" data-insert="simplify()" data-cursor-offset="-1">simplify</button>
+          <button class="key-btn" data-insert="solve()" data-cursor-offset="-1">solve</button>
+          <button class="key-btn" data-insert="apart()" data-cursor-offset="-1">apart</button>
+          <button class="key-btn" data-insert="together()" data-cursor-offset="-1">together</button>
+          <button class="key-btn" data-insert="trigsimp()" data-cursor-offset="-1">trigsimp</button>
+          <button class="key-btn" data-insert="roots()" data-cursor-offset="-1">roots</button>
+        </div>
+      </div>
+
+      <!-- Tab: calc Calculus Operations -->
+      <div class="keypad-tab-content" data-tab-content="calc">
+        <div class="touch-grid-keypad funcs-grid">
+          <button class="key-btn" data-insert="diff(x, x)">diff</button>
+          <button class="key-btn" data-insert="integrate(x, x)">integrate</button>
+          <button class="key-btn" data-insert="limit(x, x, 0)">limit</button>
+          <button class="key-btn" data-insert="series(x, x, 0, 4)">series</button>
+          <button class="key-btn" data-insert="Sum(i, (i, 1, n))">Sum</button>
+          <button class="key-btn" data-insert="plot(sin(x), (x, -5, 5))">plot</button>
+        </div>
+      </div>
+
+      <!-- Tab: matrix -->
+      <div class="keypad-tab-content" data-tab-content="matrix">
+        <div class="touch-grid-keypad funcs-grid">
+          <button class="key-btn" data-insert="Matrix([[1, 0], [0, 1]])">Matrix</button>
+          <button class="key-btn" data-insert="det()" data-cursor-offset="-1">det</button>
+          <button class="key-btn" data-insert="inv()" data-cursor-offset="-1">inv</button>
+          <button class="key-btn" data-insert="rref()" data-cursor-offset="-1">rref</button>
+          <button class="key-btn" data-insert="eigenvals()" data-cursor-offset="-1">eigenvals</button>
+          <button class="key-btn" data-insert="transpose()" data-cursor-offset="-1">transpose</button>
+        </div>
+      </div>
+
+      <!-- Tab: sym Greek & Math Constants -->
+      <div class="keypad-tab-content" data-tab-content="sym">
+        <div class="touch-grid-keypad">
+          <button class="key-btn" data-insert="alpha">α</button>
+          <button class="key-btn" data-insert="beta">β</button>
+          <button class="key-btn" data-insert="gamma">γ</button>
+          <button class="key-btn" data-insert="delta">δ</button>
+          <button class="key-btn" data-insert="theta">θ</button>
+          <button class="key-btn" data-insert="lambda">λ</button>
+          <button class="key-btn" data-insert="mu">μ</button>
+          <button class="key-btn" data-insert="pi">π</button>
+          <button class="key-btn" data-insert="sigma">σ</button>
+          <button class="key-btn" data-insert="phi">φ</button>
+          <button class="key-btn" data-insert="omega">ω</button>
+          <button class="key-btn" data-insert="oo">∞</button>
+        </div>
+      </div>
+
+      <!-- Tab: embed Hardware Math -->
+      <div class="keypad-tab-content" data-tab-content="embed">
+        <div class="touch-grid-keypad funcs-grid">
+          <button class="key-btn" data-insert="to_bin(42, 8)">to_bin</button>
+          <button class="key-btn" data-insert="to_hex(255, 8)">to_hex</button>
+          <button class="key-btn" data-insert="twos_comp_repr(-5, 8)">twos_comp</button>
+          <button class="key-btn" data-insert="to_q(3.14, 7, 8)">to_q</button>
+          <button class="key-btn" data-insert="adc_volt(512, 3.3, 10)">adc_volt</button>
+          <button class="key-btn" data-insert="rc_cutoff(10*kOhm, 100*nF)">rc_cutoff</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Matrix Wizard Modal -->
+  <div id="matrix-wizard-modal" class="modal-backdrop">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>✨ Matrix Wizard</h3>
+        <button id="close-matrix-wizard" class="icon-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="matrix-dimension-controls">
+          <div class="dim-group">
+            <label for="matrix-rows">Rows (M):</label>
+            <input type="number" id="matrix-rows" min="1" max="6" value="2" />
+          </div>
+          <div class="dim-group">
+            <label for="matrix-cols">Columns (N):</label>
+            <input type="number" id="matrix-cols" min="1" max="6" value="2" />
+          </div>
+          <div class="dim-group">
+            <label for="matrix-preset">Preset:</label>
+            <select id="matrix-preset">
+              <option value="identity">Identity</option>
+              <option value="zeros">Zeros</option>
+              <option value="ones">Ones</option>
+              <option value="diagonal">Diagonal</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="matrix-grid-scroll">
+          <div id="matrix-grid-container" class="matrix-grid-container">
+            <!-- Dynamically populated matrix cells -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancel-matrix-wizard" class="btn-secondary">Cancel</button>
+        <button id="apply-matrix-wizard" class="btn-primary">Insert Matrix</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Dialog Modal -->
+  <div id="export-modal" class="modal-backdrop">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-header">
+        <h3>Export Worksheet</h3>
+        <button id="close-export-modal" class="icon-btn" title="Close">✕</button>
+      </div>
+      <div class="modal-body export-options-list">
+        <button class="export-opt-btn" data-format="markdown">
+          <div class="opt-title">Markdown (.md)</div>
+          <div class="opt-desc">Worksheet with GitHub-flavored math equations</div>
+        </button>
+        <button class="export-opt-btn" data-format="latex">
+          <div class="opt-title">LaTeX (.tex)</div>
+          <div class="opt-desc">Compilable standalone LaTeX document</div>
+        </button>
+        <button class="export-opt-btn" data-format="json">
+          <div class="opt-title">JSON Document (.json)</div>
+          <div class="opt-desc">Full worksheet data with serialized inputs & results</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main JavaScript Orchestrator -->
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
