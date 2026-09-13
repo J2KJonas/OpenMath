@@ -101,9 +101,119 @@ class WorksheetIO:
 
         exec_idx = 1
 
+        def process_text_field(tf: ET.Element, depth: int, out_result=None):
+            nonlocal exec_idx
+            prompt = tf.attrib.get('prompt', '')
+            style = tf.attrib.get('style', '')
+
+            # 1. Check for embedded images
+            imgs = tf.findall('.//Image')
+            for img in imgs:
+                raw_img_text = img.text or ""
+                img_bytes = decode_worksheet_image(raw_img_text)
+                if img_bytes:
+                    img_b64 = base64.b64encode(img_bytes).decode('ascii')
+                    img_id = f"img_{uuid.uuid4().hex[:8]}"
+                    raw_w = int(img.attrib.get('width', '500'))
+                    raw_h = int(img.attrib.get('height', '350'))
+                    img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
+                    img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
+                    cell = {
+                        'cell_id': str(uuid.uuid4())[:8],
+                        'execution_idx': exec_idx,
+                        'input': img_tag,
+                        'input_mode': cls.MODE_TEXT,
+                        'is_worksheet_mode': not is_presentation,
+                        'embedded_images': {img_id: img_b64},
+                        'section_level': depth,
+                    }
+                    cells_data.append(cell)
+                    exec_idx += 1
+
+            # 2. Check for Math equations
+            eqs = tf.findall('.//Equation')
+            added_eq = False
+            if eqs:
+                for eq in eqs:
+                    m_str, l_str = get_equation_math(eq)
+                    if not m_str.strip() or m_str == 'JSFH' or cls._is_base64_mprintslash(m_str):
+                        continue  # Filter out empty placeholder lines (JSFH)
+                    is_not_exec = (eq.attrib.get('executable', 'true').lower() == 'false') or (tf.attrib.get('style', '') == 'Text' and not tf.attrib.get('prompt', '').strip())
+                    is_exec = not is_not_exec
+                    cell = {
+                        'cell_id': str(uuid.uuid4())[:8],
+                        'execution_idx': exec_idx,
+                        'input': m_str,
+                        'input_mode': cls.MODE_2D_MATH if is_exec else cls.MODE_NONEXEC_MATH,
+                        'is_worksheet_mode': not is_presentation,
+                        'section_level': depth,
+                    }
+                    if out_result:
+                        cell['result'] = out_result
+                        out_result = None
+                    cells_data.append(cell)
+                    exec_idx += 1
+                    added_eq = True
+
+            # 3. Formatted text
+            tf_clean = cls._extract_tf_text(tf)
+            if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not imgs:
+                if added_eq and tf_clean == '=':
+                    return
+                prefix = "# " if style == 'Title' else ("## " if style == 'Heading 1' else "")
+                tf_bg = tf.attrib.get('background', '')
+                fonts = list(tf.findall('.//Font'))
+                html_pieces = []
+                has_font_bg = False
+                for font in fonts:
+                    bg = font.attrib.get('background', '')
+                    ftxt = ''.join(font.itertext()).strip()
+                    ftxt = re.sub(r'\bJSFH\b', '', ftxt).strip()
+                    if bg and ftxt:
+                        has_font_bg = True
+                        m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', bg)
+                        if m_rgb:
+                            r_c, g_c, b_c = m_rgb.groups()
+                            html_pieces.append(f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{ftxt}</span>')
+                        else:
+                            html_pieces.append(ftxt)
+                    elif ftxt:
+                        html_pieces.append(ftxt)
+
+                if has_font_bg and html_pieces:
+                    formatted_input = " ".join(html_pieces)
+                elif tf_bg:
+                    m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', tf_bg)
+                    if m_rgb:
+                        r_c, g_c, b_c = m_rgb.groups()
+                        formatted_input = f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{tf_clean}</span>'
+                    else:
+                        formatted_input = prefix + tf_clean
+                else:
+                    formatted_input = prefix + tf_clean
+
+                is_1d_input = (style in ('Maple Input', 'OpenMath Input', '1D Input')) or (prompt and prompt.strip() == '>')
+                cell = {
+                    'cell_id': str(uuid.uuid4())[:8],
+                    'execution_idx': exec_idx,
+                    'input': formatted_input,
+                    'input_mode': cls.MODE_1D_MATH if is_1d_input else cls.MODE_TEXT,
+                    'is_worksheet_mode': not is_presentation,
+                    'section_level': depth,
+                }
+                if is_1d_input and out_result:
+                    cell['result'] = out_result
+                    out_result = None
+                cells_data.append(cell)
+                exec_idx += 1
+
         def process_element(elem: ET.Element, depth: int = 0):
             nonlocal exec_idx
             tag = elem.tag
+
+            if tag == 'Text-field':
+                process_text_field(elem, depth)
+                return
 
             if tag == 'Section':
                 col = elem.attrib.get('collapsed', 'false').lower() == 'true'
@@ -347,109 +457,7 @@ class WorksheetIO:
 
                 if inp is not None:
                     for tf in inp.iter('Text-field'):
-                        prompt = tf.attrib.get('prompt', '')
-                        style = tf.attrib.get('style', '')
-
-                        # 1. Check for embedded images
-                        imgs = tf.findall('.//Image')
-                        for img in imgs:
-                            raw_img_text = img.text or ""
-                            img_bytes = decode_worksheet_image(raw_img_text)
-                            if img_bytes:
-                                img_b64 = base64.b64encode(img_bytes).decode('ascii')
-                                img_id = f"img_{uuid.uuid4().hex[:8]}"
-                                raw_w = int(img.attrib.get('width', '500'))
-                                raw_h = int(img.attrib.get('height', '350'))
-                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
-                                img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
-                                cell = {
-                                    'cell_id': str(uuid.uuid4())[:8],
-                                    'execution_idx': exec_idx,
-                                    'input': img_tag,
-                                    'input_mode': cls.MODE_TEXT,
-                                    'is_worksheet_mode': not is_presentation,
-                                    'embedded_images': {img_id: img_b64},
-                                    'section_level': depth,
-                                }
-                                cells_data.append(cell)
-                                exec_idx += 1
-
-                        # 2. Check for Math equations
-                        eqs = tf.findall('.//Equation')
-                        added_eq = False
-                        if eqs:
-                            for eq in eqs:
-                                m_str, l_str = get_equation_math(eq)
-                                if not m_str.strip() or m_str == 'JSFH' or cls._is_base64_mprintslash(m_str):
-                                    continue  # Filter out empty placeholder lines (JSFH)
-                                is_not_exec = (eq.attrib.get('executable', 'true').lower() == 'false') or (tf.attrib.get('style', '') == 'Text' and not tf.attrib.get('prompt', '').strip())
-                                is_exec = not is_not_exec
-                                cell = {
-                                    'cell_id': str(uuid.uuid4())[:8],
-                                    'execution_idx': exec_idx,
-                                    'input': m_str,
-                                    'input_mode': cls.MODE_2D_MATH if is_exec else cls.MODE_NONEXEC_MATH,
-                                    'is_worksheet_mode': not is_presentation,
-                                    'section_level': depth,
-                                }
-                                if out_result:
-                                    cell['result'] = out_result
-                                    out_result = None
-                                cells_data.append(cell)
-                                exec_idx += 1
-                                added_eq = True
-
-                        # 3. Formatted text
-                        tf_clean = cls._extract_tf_text(tf)
-                        if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not imgs:
-                            if added_eq and tf_clean == '=':
-                                continue
-                            prefix = "# " if style == 'Title' else ("## " if style == 'Heading 1' else "")
-                            tf_bg = tf.attrib.get('background', '')
-                            fonts = list(tf.findall('.//Font'))
-                            html_pieces = []
-                            has_font_bg = False
-                            for font in fonts:
-                                bg = font.attrib.get('background', '')
-                                ftxt = ''.join(font.itertext()).strip()
-                                ftxt = re.sub(r'\bJSFH\b', '', ftxt).strip()
-                                if bg and ftxt:
-                                    has_font_bg = True
-                                    m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', bg)
-                                    if m_rgb:
-                                        r_c, g_c, b_c = m_rgb.groups()
-                                        html_pieces.append(f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{ftxt}</span>')
-                                    else:
-                                        html_pieces.append(ftxt)
-                                elif ftxt:
-                                    html_pieces.append(ftxt)
-
-                            if has_font_bg and html_pieces:
-                                formatted_input = " ".join(html_pieces)
-                            elif tf_bg:
-                                m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', tf_bg)
-                                if m_rgb:
-                                    r_c, g_c, b_c = m_rgb.groups()
-                                    formatted_input = f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{tf_clean}</span>'
-                                else:
-                                    formatted_input = prefix + tf_clean
-                            else:
-                                formatted_input = prefix + tf_clean
-
-                            is_1d_input = (style in ('Maple Input', 'OpenMath Input', '1D Input')) or (prompt and prompt.strip() == '>')
-                            cell = {
-                                'cell_id': str(uuid.uuid4())[:8],
-                                'execution_idx': exec_idx,
-                                'input': formatted_input,
-                                'input_mode': cls.MODE_1D_MATH if is_1d_input else cls.MODE_TEXT,
-                                'is_worksheet_mode': not is_presentation,
-                                'section_level': depth,
-                            }
-                            if is_1d_input and out_result:
-                                cell['result'] = out_result
-                                out_result = None
-                            cells_data.append(cell)
-                            exec_idx += 1
+                        process_text_field(tf, depth, out_result)
                 return
 
             else:
@@ -457,7 +465,7 @@ class WorksheetIO:
                     process_element(child, depth)
 
         for child in root:
-            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input'):
+            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input', 'Text-field'):
                 process_element(child, 0)
 
         return cells_data

@@ -70,7 +70,7 @@ export class WorksheetManager {
     inputEl.setSelectionRange(newCursor, newCursor);
   }
 
-  addCell(initialText = "", focus = true) {
+  addCell(initialText = "", focus = true, cachedResult = null) {
     this.cellCounter++;
     const idx = this.cellCounter;
     const cellId = `cell_${idx}`;

@@ -4,7 +4,16 @@
  */
 
 // Import Pyodide script inside worker
-importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
+try {
+  importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js");
+} catch (err) {
+  console.error("Pyodide script failed to import:", err);
+  postMessage({
+    type: "ERROR",
+    status: "error",
+    message: `Pyodide CDN Error: ${err.message}`
+  });
+}
 
 let pyodide = null;
 let casBridge = null;
@@ -51,6 +60,10 @@ async function initPyodideRuntime(basePath = "../") {
   try {
     postMessage({ type: "STATUS", status: "loading", message: "Starting Python WebAssembly runtime..." });
 
+    if (typeof loadPyodide === "undefined") {
+      throw new Error("Pyodide runtime script could not be loaded from CDN.");
+    }
+
     pyodide = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/"
     });
@@ -63,24 +76,34 @@ async function initPyodideRuntime(basePath = "../") {
     // Set up directories in virtual filesystem
     pyodide.FS.mkdirTree("/home/pyodide/cas_engine");
 
-    // Attempt to load bundled bundle JSON first, or fetch files individually
+    // Attempt to load bundled bundle JSON first using multiple candidate paths
     let loadedBundle = false;
-    try {
-      const bundleResp = await fetch(`${basePath}cas_bundle.json`);
-      if (bundleResp.ok) {
-        const bundle = await bundleResp.json();
-        for (const [filename, content] of Object.entries(bundle)) {
-          if (filename.startsWith("cas_engine/")) {
-            const relName = filename.replace("cas_engine/", "");
-            pyodide.FS.writeFile(`/home/pyodide/cas_engine/${relName}`, content);
-          } else {
-            pyodide.FS.writeFile(`/home/pyodide/${filename}`, content);
+    const bundleCandidates = [
+      new URL(`${basePath}cas_bundle.json`, self.location.href).href,
+      new URL("../cas_bundle.json", self.location.href).href,
+      new URL("./cas_bundle.json", self.location.href).href,
+      new URL("cas_bundle.json", self.location.origin + self.location.pathname.replace(/\/[^/]*$/, "/")).href
+    ];
+
+    for (const url of bundleCandidates) {
+      try {
+        const bundleResp = await fetch(url);
+        if (bundleResp.ok) {
+          const bundle = await bundleResp.json();
+          for (const [filename, content] of Object.entries(bundle)) {
+            if (filename.startsWith("cas_engine/")) {
+              const relName = filename.replace("cas_engine/", "");
+              pyodide.FS.writeFile(`/home/pyodide/cas_engine/${relName}`, content);
+            } else {
+              pyodide.FS.writeFile(`/home/pyodide/${filename}`, content);
+            }
           }
+          loadedBundle = true;
+          break;
         }
-        loadedBundle = true;
+      } catch (e) {
+        // Continue to next candidate
       }
-    } catch (e) {
-      console.warn("Bundle not found, loading individual files:", e);
     }
 
     if (!loadedBundle) {

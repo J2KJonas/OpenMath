@@ -13,7 +13,13 @@ class OpenMathApp {
     this.worksheet = null;
     this.palette = null;
     this.mobileDock = null;
-    this.theme = localStorage.getItem("openmath_theme") || "dark";
+    let storedTheme = "dark";
+    try {
+      storedTheme = localStorage.getItem("openmath_theme") || "dark";
+    } catch (e) {
+      storedTheme = "dark";
+    }
+    this.theme = storedTheme;
     this.pendingEvaluations = new Map();
   }
 
@@ -42,7 +48,11 @@ class OpenMathApp {
 
   applyTheme(theme) {
     this.theme = theme;
-    localStorage.setItem("openmath_theme", theme);
+    try {
+      localStorage.setItem("openmath_theme", theme);
+    } catch (e) {
+      console.warn("Could not save theme to localStorage:", e);
+    }
     document.body.className = `theme-${theme}`;
     document.documentElement.setAttribute("data-theme", theme);
 
@@ -73,6 +83,14 @@ class OpenMathApp {
 
     try {
       this.worker = new Worker("./js/cas-worker.js");
+
+      this.worker.onerror = (err) => {
+        console.error("Web Worker error:", err);
+        const errDetail = err.message || (err.error && err.error.message) || "Worker initialization failed";
+        if (loadingStatus) loadingStatus.textContent = `Worker Error: ${errDetail}`;
+        if (statusText) statusText.textContent = `Worker Error: ${errDetail}`;
+        if (statusDot) statusDot.className = "status-dot error";
+      };
 
       this.worker.onmessage = (e) => {
         const data = e.data;
@@ -370,8 +388,26 @@ class OpenMathApp {
   }
 }
 
-// Instantiate and start OpenMath application on DOM load
-window.addEventListener("DOMContentLoaded", () => {
-  const app = new OpenMathApp();
-  app.init();
-});
+// Safe startup handler for mobile browsers and standard DOM environments
+function startApp() {
+  if (window._openMathAppStarted) return;
+  window._openMathAppStarted = true;
+  try {
+    const app = new OpenMathApp();
+    app.init();
+    window.openMathApp = app;
+  } catch (err) {
+    console.error("Fatal startup error in OpenMathApp:", err);
+    const loadingStatus = document.getElementById("loading-status");
+    if (loadingStatus) {
+      loadingStatus.textContent = `Startup error: ${err.message}`;
+    }
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startApp);
+} else {
+  // DOM already parsed or interactive (common in iOS Safari module execution)
+  startApp();
+}
