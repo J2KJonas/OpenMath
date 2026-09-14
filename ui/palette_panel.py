@@ -660,7 +660,6 @@ DEFAULT_SECTION_ORDER = [
     "Common Symbols",
     "Greek",
     "Matrices & Vectors",
-    "Plots",
 ]
 
 
@@ -1220,7 +1219,6 @@ class PalettePanel(QWidget):
             "Common Symbols": AccordionSection("Common Symbols", self._create_common_symbols_section(), start_expanded=True, theme_mode=self.theme_mode),
             "Greek": AccordionSection("Greek", self._create_greek_section(), start_expanded=False, theme_mode=self.theme_mode),
             "Matrices & Vectors": AccordionSection("Matrices & Vectors", self._create_matrices_section(), start_expanded=False, theme_mode=self.theme_mode),
-            "Plots": AccordionSection("Plots", self._create_plots_section(), start_expanded=False, theme_mode=self.theme_mode),
         }
 
         for sec in self.sections.values():
@@ -1658,24 +1656,6 @@ class PalettePanel(QWidget):
             r = idx // cols
             c = idx % cols
             grid.addWidget(self._make_grid_btn(lbl, tmpl, f"Unit {lbl}"), r, c)
-
-        return w
-
-    def _create_plots_section(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
-
-        plots = [
-            ("plot(f(x), x=a..b)", "plot(sin(x) · exp(-x/5), x = -10..10)", "Standard 2D function plot"),
-            ("polygonOmråde", "polygonOmråde(Uligheder, x = -1 .. 13, y = -1 .. 12)", "Feasible polygon region"),
-            ("LPplot Level Curves", "LPplot(30 · x + 20 · y, Uligheder, [0, 120, 300])", "Linear programming level curve plot"),
-            ("plot_parametric", "plot_parametric(cos(t)³, sin(t)³, (t, 0, 6.28))", "Parametric curve (x(t), y(t))"),
-            ("plot_polar", "plot_polar(1 + cos(theta), (theta, 0, 6.28))", "Polar curve r(θ)"),
-        ]
-        for lbl, tmpl, tip in plots:
-            layout.addWidget(self._make_grid_btn(lbl, tmpl, tip, font_family="Segoe UI"))
 
         return w
 

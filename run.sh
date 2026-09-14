@@ -7,6 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# 1. Check for existing local virtual environment
+
 # Ensure PATH includes common Python locations on macOS and Linux
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/Library/Frameworks/Python.framework/Versions/Current/bin:$PATH"
 for p in /Library/Frameworks/Python.framework/Versions/3.*/bin; do
@@ -16,7 +18,6 @@ for p in /Library/Frameworks/Python.framework/Versions/3.*/bin; do
 done
 export PATH
 
-# 1. Look for an existing local virtual environment
 PYTHON_BIN=""
 if [ -x "$SCRIPT_DIR/.venv/bin/python3" ]; then
     PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
@@ -68,6 +69,14 @@ if [ -z "$PYTHON_BIN" ]; then
         echo "[INFO] Creating virtual environment (.venv) for OpenMath..."
         if ! "$PYTHON_SYSTEM" -m venv "$SCRIPT_DIR/.venv"; then
             echo "[ERROR] Failed to create virtual environment." >&2
+            echo "On Debian/Ubuntu systems, install the venv package:" >&2
+            echo "    sudo apt update && sudo apt install -y python3-venv python3-pip" >&2
+            exit 1
+        fi
+        PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+    fi
+fi
+
             exit 1
         fi
         PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
@@ -79,6 +88,7 @@ if ! "$PYTHON_BIN" -c "import PyQt6, sympy, matplotlib, numpy" >/dev/null 2>&1; 
     echo "[INFO] Missing required packages detected."
     echo "[INFO] Installing dependencies from requirements.txt..."
     "$PYTHON_BIN" -m pip install --quiet --upgrade pip 2>/dev/null || true
+
     if ! "$PYTHON_BIN" -m pip install -r "$SCRIPT_DIR/requirements.txt"; then
         echo "[ERROR] Failed to install required packages." >&2
         echo "Please run: $PYTHON_BIN -m pip install -r requirements.txt" >&2

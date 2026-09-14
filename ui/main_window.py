@@ -1006,9 +1006,20 @@ class DocumentTabBar(QTabBar):
         super().__init__(parent)
         self._repositioning = False
         self._prev_start_idx = 0
+        self.setUsesScrollButtons(False)
+        self.setElideMode(Qt.TextElideMode.ElideNone)
 
     def minimumSizeHint(self):
         return QSize(50, 26)
+
+    def sizeHint(self):
+        total_w = 0
+        for i in range(self.count()):
+            if not hasattr(self, 'isTabVisible') or self.isTabVisible(i):
+                r = self.tabRect(i)
+                w = r.width() if r.isValid() and r.width() > 0 else self.tabSizeHint(i).width()
+                total_w += max(w, 130)
+        return QSize(max(50, total_w), 26)
 
     def tabInserted(self, index: int):
         super().tabInserted(index)
@@ -1038,6 +1049,9 @@ class DocumentTabBar(QTabBar):
                         watched.setVisible(False)
                         return True
                     r = self.tabRect(i)
+                    if not r.isValid() or r.width() <= 0:
+                        watched.setVisible(False)
+                        return True
                     proper_x = r.x() + r.width() - watched.width() - 6
                     proper_y = r.y() + (r.height() - watched.height()) // 2
                     if watched.x() != proper_x or watched.y() != proper_y:
@@ -1061,8 +1075,11 @@ class DocumentTabBar(QTabBar):
                     if hasattr(self, 'isTabVisible') and not self.isTabVisible(i):
                         btn.setVisible(False)
                         continue
-                    btn.setVisible(True)
                     r = self.tabRect(i)
+                    if not r.isValid() or r.width() <= 0:
+                        btn.setVisible(False)
+                        continue
+                    btn.setVisible(True)
                     proper_x = r.x() + r.width() - btn.width() - 6
                     proper_y = r.y() + (r.height() - btn.height()) // 2
                     btn.move(proper_x, proper_y)
@@ -1077,9 +1094,103 @@ class DocumentTabBar(QTabBar):
 
 
 class DocumentTabWidget(QTabWidget):
-    """Custom QTabWidget with bounded minimum size hint to prevent pushing parent window width."""
+    """Custom QTabWidget with bounded minimum size hint and dynamic sizeHint to fit visible tabs."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setUsesScrollButtons(False)
+
     def minimumSizeHint(self):
         return QSize(50, 26)
+
+    def sizeHint(self):
+        tb = self.tabBar()
+        if tb:
+            return QSize(max(50, tb.sizeHint().width() + 4), 26)
+class WindowResizeGrip(QWidget):
+    """
+    Overlay resize grip widget enabling smooth, native-feel resizing from all window corners and edges.
+    Operates seamlessly across Wayland, X11, Windows, and macOS.
+    """
+    def __init__(self, parent: QMainWindow, edge: Qt.Edge, cursor: Qt.CursorShape, is_corner: bool = False, draw_indicator: bool = False):
+        super().__init__(parent)
+        self.main_win = parent
+        self.edge = edge
+        self.is_corner = is_corner
+        self.draw_indicator = draw_indicator
+        self.setCursor(cursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setStyleSheet("background: transparent;")
+        self._dragging = False
+        self._drag_start_global = QPoint()
+        self._drag_start_geo = QRect()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.main_win.isMaximized() or self.main_win.isFullScreen():
+                return
+            self._dragging = True
+            self._drag_start_global = event.globalPosition().toPoint()
+            self._drag_start_geo = self.main_win.geometry()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            cur_global = event.globalPosition().toPoint()
+            dx = cur_global.x() - self._drag_start_global.x()
+            dy = cur_global.y() - self._drag_start_global.y()
+
+            min_w = self.main_win.minimumWidth()
+            min_h = self.main_win.minimumHeight()
+            if min_w <= 0:
+                min_w = max(500, self.main_win.minimumSizeHint().width())
+            if min_h <= 0:
+                min_h = max(300, self.main_win.minimumSizeHint().height())
+
+            x = self._drag_start_geo.x()
+            y = self._drag_start_geo.y()
+            w = self._drag_start_geo.width()
+            h = self._drag_start_geo.height()
+
+            if self.edge & Qt.Edge.RightEdge:
+                w = max(min_w, w + dx)
+            elif self.edge & Qt.Edge.LeftEdge:
+                new_w = max(min_w, w - dx)
+                x = x + (w - new_w)
+                w = new_w
+
+            if self.edge & Qt.Edge.BottomEdge:
+                h = max(min_h, h + dy)
+            elif self.edge & Qt.Edge.TopEdge:
+                new_h = max(min_h, h - dy)
+                y = y + (h - new_h)
+                h = new_h
+
+            self.main_win.setGeometry(x, y, w, h)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event):
+        if not self.draw_indicator or self.main_win.isMaximized() or self.main_win.isFullScreen():
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        is_dark = _is_dark_theme(self.main_win) if hasattr(self.main_win, 'theme_mode') else False
+        color = QColor(100, 116, 139, 140) if is_dark else QColor(148, 163, 184, 160)
+        p.setPen(QPen(color, 1.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        w, h = self.width(), self.height()
+        for offset in (4, 8, 12):
+            p.drawLine(w - offset, h - 2, w - 2, h - offset)
+        p.end()
 
 
 class MainWindow(QMainWindow):
@@ -1220,6 +1331,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Start.mw - [Server 3] - OpenMath")
         self.resize(1380, 880)
+        self.setMinimumSize(650, 400)
 
         # Core State
         self.theme_mode = Theme.LIGHT
@@ -1229,6 +1341,51 @@ class MainWindow(QMainWindow):
 
         self._init_ui()
         self._apply_theme()
+        self._init_resize_grips()
+
+    def _init_resize_grips(self):
+        """Initialize transparent resize grips around all window corners and borders."""
+        self._resize_grips = {
+            "top_left": WindowResizeGrip(self, Qt.Edge.TopEdge | Qt.Edge.LeftEdge, Qt.CursorShape.SizeFDiagCursor, is_corner=True),
+            "top_right": WindowResizeGrip(self, Qt.Edge.TopEdge | Qt.Edge.RightEdge, Qt.CursorShape.SizeBDiagCursor, is_corner=True),
+            "bottom_left": WindowResizeGrip(self, Qt.Edge.BottomEdge | Qt.Edge.LeftEdge, Qt.CursorShape.SizeBDiagCursor, is_corner=True),
+            "bottom_right": WindowResizeGrip(self, Qt.Edge.BottomEdge | Qt.Edge.RightEdge, Qt.CursorShape.SizeFDiagCursor, is_corner=True, draw_indicator=True),
+            "left": WindowResizeGrip(self, Qt.Edge.LeftEdge, Qt.CursorShape.SizeHorCursor),
+            "right": WindowResizeGrip(self, Qt.Edge.RightEdge, Qt.CursorShape.SizeHorCursor),
+            "top": WindowResizeGrip(self, Qt.Edge.TopEdge, Qt.CursorShape.SizeVerCursor),
+            "bottom": WindowResizeGrip(self, Qt.Edge.BottomEdge, Qt.CursorShape.SizeVerCursor),
+        }
+        self._update_resize_grips()
+
+    def _update_resize_grips(self):
+        """Reposition all corner and edge resize grips to match current window geometry."""
+        if not hasattr(self, '_resize_grips'):
+            return
+        is_max = self.isMaximized() or self.isFullScreen() or bool(self.windowState() & (Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen))
+        if is_max:
+            for grip in self._resize_grips.values():
+                grip.setVisible(False)
+            return
+
+        w = self.width()
+        h = self.height()
+        C = 20  # Corner hit area (generous 20x20px)
+        T = 6   # Edge border thickness (6px)
+
+        grips = self._resize_grips
+        grips["top_left"].setGeometry(0, 0, C, C)
+        grips["top_right"].setGeometry(w - C, 0, C, C)
+        grips["bottom_left"].setGeometry(0, h - C, C, C)
+        grips["bottom_right"].setGeometry(w - C, h - C, C, C)
+
+        grips["left"].setGeometry(0, C, T, max(0, h - 2 * C))
+        grips["right"].setGeometry(w - T, C, T, max(0, h - 2 * C))
+        grips["top"].setGeometry(C, 0, max(0, w - 2 * C), T)
+        grips["bottom"].setGeometry(C, h - T, max(0, w - 2 * C), T)
+
+        for grip in grips.values():
+            grip.setVisible(True)
+            grip.raise_()
 
     def _init_ui(self):
         self.setDockNestingEnabled(True)
@@ -1654,10 +1811,13 @@ class MainWindow(QMainWindow):
             return
 
         available_w = self.tab_bar_toolbar.width()
-        if available_w <= 0 and hasattr(self, 'tab_widget') and self.tab_widget.parentWidget():
-            available_w = self.tab_widget.parentWidget().width()
-        if available_w <= 0:
-            available_w = self.width()
+        if available_w <= 100:
+            if hasattr(self, 'tab_bar_container') and self.tab_bar_container.width() > 100:
+                available_w = self.tab_bar_container.width()
+            elif hasattr(self, 'tab_widget') and self.tab_widget.parentWidget() and self.tab_widget.parentWidget().width() > 100:
+                available_w = self.tab_widget.parentWidget().width()
+            elif self.width() > 100:
+                available_w = self.width() - 20
         if available_w <= 0:
             return
 
@@ -1668,8 +1828,8 @@ class MainWindow(QMainWindow):
             tab_widths.append(max(174, fm_w + 44))
 
         sum_all_w = sum(tab_widths)
-        btn_add_w = self.btn_add_tab.width()
-        btn_overflow_w = self.btn_tab_overflow.width()
+        btn_add_w = self.btn_add_tab.width() if hasattr(self, 'btn_add_tab') else 20
+        btn_overflow_w = self.btn_tab_overflow.width() if hasattr(self, 'btn_tab_overflow') else 20
 
         max_w_for_tabs = max(100, available_w - (btn_add_w + btn_overflow_w + 24))
 
@@ -1682,6 +1842,8 @@ class MainWindow(QMainWindow):
 
             self.btn_add_tab.setVisible(True)
             self.btn_tab_overflow.setVisible(False)
+            tb.updateGeometry()
+            self.tab_widget.updateGeometry()
             return
 
         current_idx = self.tab_widget.currentIndex()
@@ -1700,13 +1862,13 @@ class MainWindow(QMainWindow):
         tb._reposition_close_buttons()
 
         hidden_count = total - (end_idx - start_idx)
+        self.btn_add_tab.setVisible(True)
+        self.btn_tab_overflow.setVisible(hidden_count > 0)
         if hidden_count > 0:
-            self.btn_add_tab.setVisible(False)
-            self.btn_tab_overflow.setVisible(True)
             self.btn_tab_overflow.setToolTip(f"More Tabs ({hidden_count} hidden)")
-        else:
-            self.btn_add_tab.setVisible(True)
-            self.btn_tab_overflow.setVisible(False)
+
+        tb.updateGeometry()
+        self.tab_widget.updateGeometry()
 
     def _update_add_tab_button_pos(self):
         self._update_tab_bar_layout()
@@ -3465,6 +3627,8 @@ class MainWindow(QMainWindow):
                         except (RuntimeError, AttributeError, ReferenceError):
                             pass
                     QTimer.singleShot(20, _restore_focus)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._update_resize_grips()
         super().changeEvent(event)
 
     def _setup_settings_tracking(self):
@@ -3614,10 +3778,12 @@ class MainWindow(QMainWindow):
                     pass
             elif self.palette_dock.isVisible():
                 self.resizeDocks([self.palette_dock], [275], Qt.Orientation.Horizontal)
+        self._update_resize_grips()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_add_tab_button_pos()
+        self._update_resize_grips()
         if hasattr(self, '_settings_timer'):
             self._settings_timer.start(250)
 

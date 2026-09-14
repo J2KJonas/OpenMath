@@ -32,6 +32,7 @@ Name=$APP_NAME
 GenericName=Computer Algebra System
 Comment=OpenMath Desktop CAS Calculator
 Exec="$LAUNCHER_PATH" %F
+Path=$REPO_DIR
 Icon=$ICON_PATH
 Terminal=false
 Categories=Education;Science;Math;Development;
@@ -43,9 +44,12 @@ chmod +x "$DESKTOP_FILE"
 
 # If ~/Desktop exists, copy shortcut there
 if [ -d "$HOME/Desktop" ]; then
-    cp "$DESKTOP_FILE" "$HOME/Desktop/j2k-calculator.desktop"
-    chmod +x "$HOME/Desktop/j2k-calculator.desktop"
-    echo "Created Desktop shortcut: $HOME/Desktop/j2k-calculator.desktop"
+    cp "$DESKTOP_FILE" "$HOME/Desktop/openmath.desktop"
+    chmod +x "$HOME/Desktop/openmath.desktop"
+    if command -v gio >/dev/null 2>&1; then
+        gio set "$HOME/Desktop/openmath.desktop" metadata::trusted true 2>/dev/null || true
+    fi
+    echo "Created Desktop shortcut: $HOME/Desktop/openmath.desktop"
 fi
 
 if command -v update-desktop-database >/dev/null 2>&1; then
