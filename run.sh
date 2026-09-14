@@ -77,12 +77,6 @@ if [ -z "$PYTHON_BIN" ]; then
     fi
 fi
 
-            exit 1
-        fi
-        PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
-    fi
-fi
-
 # 3. Check dependencies in selected Python environment
 if ! "$PYTHON_BIN" -c "import PyQt6, sympy, matplotlib, numpy" >/dev/null 2>&1; then
     echo "[INFO] Missing required packages detected."

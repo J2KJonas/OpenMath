@@ -869,18 +869,29 @@ class WorksheetView(QWidget):
             return
         self.delete_cells([cell_id])
 
+    def clear_all_table_overlays(self, except_cell=None):
+        """Clear table outlines and overlays across all cells."""
+        for c in getattr(self, 'cells', []):
+            if c is except_cell:
+                continue
+            try:
+                if not sip.isdeleted(c) and hasattr(c, 'input_edit') and c.input_edit:
+                    if getattr(c.input_edit, '_selected_table', None) is not None or getattr(c.input_edit, '_active_table', None) is not None:
+                        c.input_edit._selected_table = None
+                        c.input_edit._active_table = None
+                        c.input_edit.viewport().update()
+            except Exception:
+                pass
+
     def clear_cell_selection(self):
         """Deselect all currently selected cells."""
         for c in list(getattr(self, 'selected_cells', [])):
             try:
                 if not sip.isdeleted(c) and hasattr(c, 'set_cell_selected'):
                     c.set_cell_selected(False)
-                if not sip.isdeleted(c) and hasattr(c, 'input_edit') and c.input_edit:
-                    c.input_edit._selected_table = None
-                    c.input_edit._active_table = None
-                    c.input_edit.viewport().update()
             except Exception:
                 pass
+        self.clear_all_table_overlays()
         if hasattr(self, 'selected_cells'):
             self.selected_cells.clear()
 

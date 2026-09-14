@@ -6545,6 +6545,10 @@ class CellInputEdit(QTextEdit):
         super().focusInEvent(event)
         if self.parent_cell:
             self.parent_cell._on_cursor_changed()
+            ws = self.parent_cell._get_worksheet_view()
+            if ws and hasattr(ws, 'clear_all_table_overlays'):
+                ws.clear_all_table_overlays(except_cell=self.parent_cell)
+        self.viewport().update()
 
     def focusOutEvent(self, event):
         had_overlay = (getattr(self, '_selected_table', None) is not None or
@@ -7854,14 +7858,6 @@ class CellInputEdit(QTextEdit):
         self._draw_tall_parentheses()
         self._draw_image_resize_handles()
         self._draw_table_handles_and_overlays()
-
-    def focusInEvent(self, event):
-        super().focusInEvent(event)
-        self.viewport().update()
-
-    def focusOutEvent(self, event):
-        super().focusOutEvent(event)
-        self.viewport().update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -9820,64 +9816,134 @@ class CellInputEdit(QTextEdit):
         return tables
 
     def _get_table_geometry(self, table: QTextTable) -> QRectF:
-        """Get viewport bounding rectangle for a QTextTable using frameBoundingRect (outer frame)."""
+        """Get viewport bounding rectangle for a QTextTable accurately encompassing all cells, padding, and borders."""
+        cols = table.columns()
+        rows = table.rows()
         layout = self.document().documentLayout()
         h_scroll = self.horizontalScrollBar().value()
         v_scroll = self.verticalScrollBar().value()
 
-        if not layout:
+        if cols <= 0 or rows <= 0 or not layout:
             return QRectF(0, 0, 100, 100)
 
-        try:
-            doc_rect = layout.frameBoundingRect(table)
-            if doc_rect.isValid() and doc_rect.width() > 0 and doc_rect.height() > 0:
-                return QRectF(
-                    doc_rect.x() - h_scroll,
-                    doc_rect.y() - v_scroll,
-                    doc_rect.width(),
-                    doc_rect.height()
-                )
-        except Exception:
-            pass
+        t_fmt = table.format()
+        border = max(1.0, float(t_fmt.border()))
 
-        # Fallback: derive from cell block bounding rects
-        cols = table.columns()
-        rows = table.rows()
-        if cols <= 0 or rows <= 0:
-            return QRectF(0, 0, 100, 100)
+        min_x, min_y = 1e9, 1e9
+        max_x, max_y = -1e9, -1e9
 
-        min_x, min_y = 999999.0, 999999.0
-        max_x, max_y = -999999.0, -999999.0
         for r in range(rows):
             for c in range(cols):
                 cell = table.cellAt(r, c)
                 if not cell.isValid():
                     continue
-                b1 = layout.blockBoundingRect(cell.firstCursorPosition().block())
-                b2 = layout.blockBoundingRect(cell.lastCursorPosition().block())
-                min_x = min(min_x, b1.left(), b2.left())
-                min_y = min(min_y, b1.top(), b2.top())
-                max_x = max(max_x, b1.right(), b2.right())
-                max_y = max(max_y, b1.bottom(), b2.bottom())
+                try:
+                    cf = cell.format().toTableCellFormat()
+                    pad_l = float(cf.leftPadding()) if hasattr(cf, 'leftPadding') else float(t_fmt.cellPadding())
+                    pad_r = float(cf.rightPadding()) if hasattr(cf, 'rightPadding') else float(t_fmt.cellPadding())
+                    pad_t = float(cf.topPadding()) if hasattr(cf, 'topPadding') else float(t_fmt.cellPadding())
+                    pad_b = float(cf.bottomPadding()) if hasattr(cf, 'bottomPadding') else float(t_fmt.cellPadding())
+                except Exception:
+                    pad_l = pad_r = pad_t = pad_b = float(t_fmt.cellPadding())
 
-        return QRectF(min_x - h_scroll, min_y - v_scroll, max(20.0, max_x - min_x), max(20.0, max_y - min_y))
+                b1 = cell.firstCursorPosition().block()
+                b2 = cell.lastCursorPosition().block()
+
+                b_left, b_top = 1e9, 1e9
+                b_right, b_bottom = -1e9, -1e9
+
+                b = b1
+                while b.isValid():
+                    br = layout.blockBoundingRect(b)
+                    if br.isValid() and br.width() > 0 and br.height() > 0:
+                        b_left = min(b_left, br.left())
+                        b_top = min(b_top, br.top())
+                        b_right = max(b_right, br.right())
+                        b_bottom = max(b_bottom, br.bottom())
+                    if b == b2:
+                        break
+                    b = b.next()
+
+                if b_left < 1e8:
+                    c_left = b_left - pad_l
+                    c_right = b_right + pad_r
+                    c_top = b_top - pad_t
+                    c_bottom = b_bottom + pad_b
+
+                    min_x = min(min_x, c_left)
+                    min_y = min(min_y, c_top)
+                    max_x = max(max_x, c_right)
+                    max_y = max(max_y, c_bottom)
+
+        if min_x > max_x or min_y > max_y:
+            try:
+                doc_rect = layout.frameBoundingRect(table)
+                if doc_rect.isValid() and doc_rect.width() > 0 and doc_rect.height() > 0:
+                    return QRectF(doc_rect.x() - h_scroll, doc_rect.y() - v_scroll, doc_rect.width(), doc_rect.height())
+            except Exception:
+                pass
+            return QRectF(0, 0, 100, 100)
+
+        tbl_x = min_x - border - h_scroll
+        tbl_y = min_y - border - v_scroll
+        tbl_w = (max_x - min_x) + 2 * border
+        tbl_h = (max_y - min_y) + 2 * border
+
+        return QRectF(tbl_x, tbl_y, max(20.0, tbl_w), max(20.0, tbl_h))
 
     def _get_table_col_divider_xs(self, table: QTextTable):
         """Return list of (col_idx, divider_x_in_viewport) for vertical dividers."""
         dividers = []
         cols = table.columns()
+        rows = table.rows()
         if cols <= 1:
             return dividers
         layout = self.document().documentLayout()
         h_scroll = self.horizontalScrollBar().value()
-        for c in range(1, cols):
-            try:
-                cell = table.cellAt(0, c)
-                b = layout.blockBoundingRect(cell.firstCursorPosition().block())
-                div_x = b.left() - h_scroll - 4.0
-                dividers.append((c - 1, float(div_x)))
-            except Exception:
-                pass
+        t_fmt = table.format()
+        spacing = float(t_fmt.cellSpacing())
+
+        col_rights = [0.0] * (cols - 1)
+        col_counts = [0] * (cols - 1)
+
+        for r in range(rows):
+            for c in range(cols - 1):
+                cell = table.cellAt(r, c)
+                if not cell.isValid():
+                    continue
+                try:
+                    cf = cell.format().toTableCellFormat()
+                    pad_r = float(cf.rightPadding()) if hasattr(cf, 'rightPadding') else float(t_fmt.cellPadding())
+                except Exception:
+                    pad_r = float(t_fmt.cellPadding())
+
+                b1 = cell.firstCursorPosition().block()
+                b2 = cell.lastCursorPosition().block()
+                max_br = -1e9
+                b = b1
+                while b.isValid():
+                    br = layout.blockBoundingRect(b)
+                    if br.isValid() and br.width() > 0:
+                        max_br = max(max_br, br.right())
+                    if b == b2:
+                        break
+                    b = b.next()
+                if max_br > -1e8:
+                    col_rights[c] += max_br + pad_r
+                    col_counts[c] += 1
+
+        for c in range(cols - 1):
+            if col_counts[c] > 0:
+                avg_r = col_rights[c] / col_counts[c]
+                dividers.append((c, avg_r + spacing / 2.0 - h_scroll))
+            else:
+                try:
+                    cell = table.cellAt(0, c + 1)
+                    b = layout.blockBoundingRect(cell.firstCursorPosition().block())
+                    dividers.append((c, float(b.left() - h_scroll - 4.0)))
+                except Exception:
+                    pass
+
         return dividers
 
     def _constrain_tables_to_viewport(self):
