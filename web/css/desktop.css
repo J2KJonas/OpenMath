@@ -1,0 +1,631 @@
+/**
+ * OpenMath Web - Desktop Layout & Workstation Styles
+ */
+
+/* Header Bar */
+.app-header {
+  height: 52px;
+  background-color: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 10;
+}
+
+.header-left, .header-center, .header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.brand-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  padding: 2px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+/* Global Mode Toggle Pill */
+.mode-pill-group {
+  display: inline-flex;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.pill-option {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.pill-option.active {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* Precision Picker */
+.precision-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.precision-picker select {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Main Layout Grid */
+.app-main-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  height: calc(100vh - 52px - 28px);
+  overflow: hidden;
+}
+
+/* Sidebar */
+.app-sidebar {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.palettes-container {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0;
+}
+
+.palette-section {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.palette-section-header {
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.palette-section-header:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chevron-icon {
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+  transform: rotate(90deg);
+}
+
+.palette-section-body {
+  padding: 10px 14px;
+  display: grid;
+  gap: 6px;
+  background-color: var(--bg-sidebar);
+}
+
+.grid-templates {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-funcs {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid-symbols {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.palette-btn {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.special-btn {
+  grid-column: span 2;
+  background-color: var(--accent-subtle);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.special-btn:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Authentic OpenMath Continuous Document & Execution Group Styles
+   ========================================================================== */
+
+/* Worksheet Area & Canvas */
+.worksheet-main {
+  background-color: var(--page-canvas-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px 20px 60px 20px;
+}
+
+.worksheet-container {
+  background-color: var(--paper-bg);
+  max-width: 920px;
+  width: 100%;
+  min-height: 820px;
+  padding: 36px 44px;
+  border-radius: 4px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.2s ease;
+}
+
+/* Base Worksheet Cell (Seamless Document Flow) */
+.worksheet-cell {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin-bottom: 8px;
+  box-shadow: none;
+  transition: none;
+  overflow: visible;
+  width: 100%;
+}
+
+/* Execution Group (Left Bracket [ + Prompt > + Formula) */
+.cell-execution-group {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+/* Left Execution Group Bracket '[' (Classic Maple / OpenMath Desktop) */
+.cell-bracket {
+  width: 8px;
+  margin-right: 8px;
+  position: relative;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cell-bracket::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: 5px;
+  border-left: 2px solid var(--bracket-color);
+  border-top: 2px solid var(--bracket-color);
+  border-bottom: 2px solid var(--bracket-color);
+  transition: border-color 0.15s ease;
+}
+
+.cell-execution-group.focused .cell-bracket::before {
+  border-color: var(--bracket-focus-color);
+}
+
+.cell-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Input Row (Prompt > + Italic Math Editor) */
+.cell-input-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 0;
+  min-height: 24px;
+}
+
+.math-prompt {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--prompt-color);
+  line-height: 1.4;
+  user-select: none;
+  margin-right: 6px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.cell-input {
+  flex: 1;
+  font-family: "Times New Roman", Times, "Cambria Math", serif;
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 0;
+  margin: 0;
+  min-height: 24px;
+  word-break: break-word;
+}
+
+.cell-input:focus {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+/* Output Row (Centered Math Output + Equation Label on right) */
+.cell-output-row {
+  border: none;
+  background: transparent;
+  padding: 4px 0 6px 0;
+}
+
+.math-output-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 36px 4px 12px;
+  box-sizing: border-box;
+}
+
+.output-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+}
+
+.katex-rendered-output {
+  font-size: 18px;
+  overflow-x: auto;
+  text-align: center;
+  color: var(--math-blue) !important;
+}
+
+.katex-rendered-output .katex {
+  color: var(--math-blue) !important;
+}
+
+.plain-text-output {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--math-blue) !important;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.math-equation-label {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: "Times New Roman", Times, serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--math-blue);
+  user-select: none;
+}
+
+.cell-calculating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.cell-error-banner {
+  display: flex;
+  align-items: center;
+  color: var(--color-error);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+/* Section Header Presentation (Clean Document Headings) */
+.cell-section-header {
+  background: transparent !important;
+  border: none !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin-top: 22px;
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.cell-section-header.level-1 {
+  margin-left: 14px;
+  margin-top: 14px;
+}
+
+.cell-section-header.level-2 {
+  margin-left: 28px;
+  margin-top: 10px;
+}
+
+.section-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.section-toggle-btn {
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.section-toggle-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.section-title-display {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.cell-section-header.level-1 .section-title-display {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cell-section-header.level-2 .section-title-display {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Text Mode Presentation (Clean Document Paragraphs & Problem Sheets) */
+.cell-text-mode {
+  background: transparent !important;
+  border: none !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.text-cell-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 2px 0 4px 16px; /* Indent aligned with math input after prompt */
+}
+
+.text-cell-body:focus {
+  background: transparent;
+}
+
+.text-cell-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  margin: 10px 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.worksheet-footer-bar {
+  padding: 12px 32px 36px 32px;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  gap: 12px;
+}
+
+.btn-add-cell {
+  flex: 1;
+  padding: 10px;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  gap: 8px;
+}
+
+.btn-add-cell:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background-color: var(--accent-subtle);
+}
+
+.btn-run-all {
+  padding: 10px 18px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-run-all:hover {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+/* Matrix Wizard Controls */
+.matrix-dimension-controls {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dim-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.dim-group input, .dim-group select {
+  padding: 6px 10px;
+}
+
+.matrix-grid-scroll {
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+}
+
+.matrix-grid-container {
+  display: grid;
+  gap: 8px;
+  justify-content: center;
+}
+
+.matrix-cell-input {
+  width: 100%;
+  height: 38px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Export Options */
+.export-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-opt-btn {
+  padding: 12px 16px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+}
+
+.export-opt-btn:hover {
+  border-color: var(--accent-primary);
+  background-color: var(--bg-hover);
+}
+
+.opt-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.opt-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Responsive Visibility Helpers */
+.desktop-only {
+  display: inline-flex;
+}
+
+.mobile-only {
+  display: none !important;
+}

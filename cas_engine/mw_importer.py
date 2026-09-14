@@ -72,10 +72,24 @@ class WorksheetIO:
         if vp is not None:
             is_presentation = vp.attrib.get('presentation', 'false').lower() == 'true'
 
-        # Batch-decode all <Equation display="..."> attributes for performance & precision
+        # Extract Styles if present (Font & Layout definitions)
+        styles_elem = root.find('Styles')
+        font_styles = {}
+        layout_styles = {}
+        if styles_elem is not None:
+            for f_elem in styles_elem.findall('Font'):
+                f_name = f_elem.attrib.get('name')
+                if f_name:
+                    font_styles[f_name] = f_elem.attrib
+            for l_elem in styles_elem.findall('Layout'):
+                l_name = l_elem.attrib.get('name')
+                if l_name:
+                    layout_styles[l_name] = l_elem.attrib
+
+        # Batch-decode all <Equation display="..."> and <Math display="..."> attributes
         all_displays = []
         display_to_idx = {}
-        for eq in root.iter('Equation'):
+        for eq in list(root.iter('Equation')) + list(root.iter('Math')):
             disp = eq.attrib.get('display', '')
             if disp and disp not in display_to_idx:
                 display_to_idx[disp] = len(all_displays)
@@ -101,9 +115,284 @@ class WorksheetIO:
 
         exec_idx = 1
 
+        def process_text_field(tf: ET.Element, depth: int, out_result=None):
+            nonlocal exec_idx
+            prompt = tf.attrib.get('prompt', '')
+            style = tf.attrib.get('style', '')
+
+            # 1. Check for embedded images
+            imgs = tf.findall('.//Image')
+            for img in imgs:
+                raw_img_text = img.text or ""
+                img_bytes = decode_worksheet_image(raw_img_text)
+                if img_bytes:
+                    img_b64 = base64.b64encode(img_bytes).decode('ascii')
+                    img_id = f"img_{uuid.uuid4().hex[:8]}"
+                    raw_w = int(img.attrib.get('width', '500'))
+                    raw_h = int(img.attrib.get('height', '350'))
+                    img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
+                    img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
+                    cell = {
+                        'cell_id': str(uuid.uuid4())[:8],
+                        'execution_idx': exec_idx,
+                        'input': img_tag,
+                        'input_mode': cls.MODE_TEXT,
+                        'is_worksheet_mode': not is_presentation,
+                        'embedded_images': {img_id: img_b64},
+                        'section_level': depth,
+                    }
+                    cells_data.append(cell)
+                    exec_idx += 1
+
+            # 2. Check for Math equations
+            eqs = tf.findall('.//Equation') + tf.findall('.//Math')
+            added_eq = False
+            if eqs:
+                for eq in eqs:
+                    m_str, l_str = get_equation_math(eq)
+                    if not m_str.strip() or m_str == 'JSFH' or cls._is_base64_mprintslash(m_str):
+                        continue  # Filter out empty placeholder lines (JSFH)
+                    is_not_exec = (eq.attrib.get('executable', 'true').lower() == 'false') or (tf.attrib.get('style', '') == 'Text' and not tf.attrib.get('prompt', '').strip())
+                    is_exec = not is_not_exec
+                    cell = {
+                        'cell_id': str(uuid.uuid4())[:8],
+                        'execution_idx': exec_idx,
+                        'input': m_str,
+                        'input_mode': cls.MODE_2D_MATH if is_exec else cls.MODE_NONEXEC_MATH,
+                        'is_worksheet_mode': not is_presentation,
+                        'section_level': depth,
+                    }
+                    if out_result:
+                        cell['result'] = out_result
+                        out_result = None
+                    cells_data.append(cell)
+                    exec_idx += 1
+                    added_eq = True
+
+            # 3. Formatted text
+            tf_clean = cls._extract_tf_text(tf)
+            if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not imgs:
+                if added_eq and tf_clean == '=':
+                    return
+                if style == 'Title':
+                    prefix = "# "
+                elif style == 'Heading 1':
+                    prefix = "## "
+                elif style == 'Heading 2':
+                    prefix = "### "
+                elif style == 'Heading 3':
+                    prefix = "#### "
+                elif style == 'Heading 4':
+                    prefix = "##### "
+                else:
+                    prefix = ""
+                tf_bg = tf.attrib.get('background', '')
+                fonts = list(tf.findall('.//Font'))
+                html_pieces = []
+                has_font_bg = False
+                for font in fonts:
+                    bg = font.attrib.get('background', '')
+                    ftxt = ''.join(font.itertext()).strip()
+                    ftxt = re.sub(r'\bJSFH\b', '', ftxt).strip()
+                    ftxt = cls.clean_octal_escapes(ftxt)
+                    if bg and ftxt:
+                        has_font_bg = True
+                        m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', bg)
+                        if m_rgb:
+                            r_c, g_c, b_c = m_rgb.groups()
+                            html_pieces.append(f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{ftxt}</span>')
+                        else:
+                            html_pieces.append(ftxt)
+                    elif ftxt:
+                        html_pieces.append(ftxt)
+
+                if has_font_bg and html_pieces:
+                    formatted_input = " ".join(html_pieces)
+                elif tf_bg:
+                    m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', tf_bg)
+                    if m_rgb:
+                        r_c, g_c, b_c = m_rgb.groups()
+                        formatted_input = f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{tf_clean}</span>'
+                    else:
+                        formatted_input = prefix + tf_clean
+                else:
+                    formatted_input = prefix + tf_clean
+
+                is_1d_input = (style in ('Maple Input', 'OpenMath Input', '1D Input')) or (prompt and prompt.strip() == '>')
+                cell = {
+                    'cell_id': str(uuid.uuid4())[:8],
+                    'execution_idx': exec_idx,
+                    'input': formatted_input,
+                    'input_mode': cls.MODE_1D_MATH if is_1d_input else cls.MODE_TEXT,
+                    'is_worksheet_mode': not is_presentation,
+                    'section_level': depth,
+                }
+                if is_1d_input and out_result:
+                    cell['result'] = out_result
+                    out_result = None
+                cells_data.append(cell)
+                exec_idx += 1
+
+        def _clean_octal_escapes(s: str) -> str:
+            return cls.clean_octal_escapes(s)
+
+        def process_table(table_elem: ET.Element, depth: int):
+            nonlocal exec_idx
+            cols = table_elem.findall('Table-Column')
+            weights = []
+            for c in cols:
+                try:
+                    weights.append(float(c.attrib.get('weight', '100')))
+                except (ValueError, TypeError):
+                    weights.append(100.0)
+            total_weight = sum(weights) or 1.0
+            col_pcts = [f"{int(round(w * 100.0 / total_weight))}%" for w in weights]
+
+            exterior = table_elem.attrib.get('exterior', 'all').lower()
+            interior = table_elem.attrib.get('interior', 'group').lower()
+            alignment = table_elem.attrib.get('alignment', 'left').lower()
+            table_w_attr = table_elem.attrib.get('width', '100%').strip()
+            m_pct = re.match(r'^([\d\.]+)%', table_w_attr)
+            if m_pct:
+                val_pct = float(m_pct.group(1))
+                table_w = f"{min(100, int(val_pct))}%"
+            else:
+                table_w = "100%"
+
+            # Maple Table exterior / interior borders (com.maplesoft.mathdoc.view.WmiTableView)
+            if exterior == 'none':
+                outer_border = "none"
+            elif exterior == 'horizontal':
+                outer_border = "border-top: 1px solid #b0b8c0; border-bottom: 1px solid #b0b8c0; border-left: none; border-right: none"
+            elif exterior == 'vertical':
+                outer_border = "border-left: 1px solid #b0b8c0; border-right: 1px solid #b0b8c0; border-top: none; border-bottom: none"
+            elif exterior == 'top':
+                outer_border = "border-top: 1px solid #b0b8c0; border-left: none; border-right: none; border-bottom: none"
+            elif exterior == 'bottom':
+                outer_border = "border-bottom: 1px solid #b0b8c0; border-left: none; border-right: none; border-top: none"
+            elif exterior == 'left':
+                outer_border = "border-left: 1px solid #b0b8c0; border-right: none; border-top: none; border-bottom: none"
+            elif exterior == 'right':
+                outer_border = "border-right: 1px solid #b0b8c0; border-left: none; border-top: none; border-bottom: none"
+            else:
+                outer_border = "1px solid #b0b8c0"
+
+            inner_border = "1px solid #d0d8e0" if interior in ('group', 'all') else "none"
+
+            if alignment in ('centre', 'centred', 'center'):
+                table_margin = "margin: 8px auto;"
+            elif alignment == 'right':
+                table_margin = "margin: 8px 0 8px auto;"
+            else:
+                table_margin = "margin: 8px 0;"
+
+            table_embedded_images = {}
+            html_rows = []
+
+            for r_idx, row in enumerate(table_elem.findall('Table-Row')):
+                cells = row.findall('Table-Cell')
+                row_sep = row.attrib.get('separator', 'true').lower() == 'true'
+                html_cells = []
+                for c_idx, cell in enumerate(cells):
+                    pct = col_pcts[c_idx] if c_idx < len(col_pcts) else ""
+                    rowspan = cell.attrib.get('rowspan', '1')
+                    colspan = cell.attrib.get('columnspan', '1')
+                    fill = cell.attrib.get('fillcolor', '')
+                    pad_val = cell.attrib.get('padding', '5').strip()
+                    try:
+                        pad_i = int(pad_val)
+                        pad_str = f"{pad_i}px {pad_i + 4}px"
+                    except Exception:
+                        pad_str = "6px 10px"
+
+                    bg_col = "#ffffff"
+                    if fill:
+                        m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', fill)
+                        if m_rgb:
+                            r_c, g_c, b_c = [int(x) for x in m_rgb.groups()]
+                            bg_col = f"#{r_c:02x}{g_c:02x}{b_c:02x}"
+
+                    cell_pieces = []
+                    for tf in cell.iter('Text-field'):
+                        # 1. Images
+                        for img in tf.findall('.//Image'):
+                            raw_img_text = img.text or ""
+                            img_bytes = decode_worksheet_image(raw_img_text)
+                            if img_bytes:
+                                img_b64 = base64.b64encode(img_bytes).decode('ascii')
+                                img_id = f"img_{uuid.uuid4().hex[:8]}"
+                                table_embedded_images[img_id] = img_b64
+                                raw_w = int(img.attrib.get('width', '350'))
+                                raw_h = int(img.attrib.get('height', '250'))
+                                col_count = len(cols) or 1
+                                max_col_img_w = max(110, int(650 / col_count))
+                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes, max_w=max_col_img_w)
+                                cell_pieces.append(f'<div style="text-align: center; margin: 4px 0;"><img src="{img_id}" width="{img_w}" height="{img_h}"/></div>')
+
+                        # 2. Equations / Math
+                        for eq in tf.findall('.//Equation') + tf.findall('.//Math'):
+                            m_str, l_str = get_equation_math(eq)
+                            if m_str and m_str != 'JSFH' and not cls._is_base64_mprintslash(m_str):
+                                clean_m = cls._clean_math_symbols(m_str)
+                                clean_m = clean_m.replace('&#961;', 'ρ').replace('&rho;', 'ρ').replace('&leq;', '≤').replace('&geq;', '≥').replace('&mid;', '|')
+                                frac = cls._parse_fraction(clean_m)
+                                if frac:
+                                    clean_m = f"{frac[0]}/{frac[1]}"
+                                cell_pieces.append(f'<div style="color: #000088; font-family: \'Times New Roman\', serif; font-size: 13pt; font-style: italic; margin: 3px 0;">{clean_m}</div>')
+
+                        # 3. Formatted text
+                        tf_clean = cls._extract_tf_text(tf)
+                        if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not tf.findall('.//Image'):
+                            tf_clean = _clean_octal_escapes(tf_clean)
+                            tf_clean = tf_clean.replace('\n', '<br/>')
+                            cell_pieces.append(f'<div style="margin: 2px 0;">{tf_clean}</div>')
+
+                    content = "".join(cell_pieces).strip() or "&nbsp;"
+                    style_items = [
+                        f"border: {inner_border};",
+                        f"padding: {pad_str};",
+                        "vertical-align: middle;",
+                        f"background-color: {bg_col};",
+                    ]
+                    if pct:
+                        style_items.append(f"width: {pct};")
+                    style_str = " ".join(style_items)
+                    rs_attr = f' rowspan="{rowspan}"' if rowspan != '1' else ''
+                    cs_attr = f' colspan="{colspan}"' if colspan != '1' else ''
+                    html_cells.append(f'<td{rs_attr}{cs_attr} style="{style_str}">{content}</td>')
+
+                html_rows.append('<tr>' + "".join(html_cells) + '</tr>')
+
+            table_style = (
+                f"border-collapse: collapse; width: {table_w}; border: {outer_border}; "
+                f"{table_margin} font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.3;"
+            )
+            table_html = f'<table style="{table_style}"><tbody>{"".join(html_rows)}</tbody></table>'
+
+            cell = {
+                'cell_id': str(uuid.uuid4())[:8],
+                'execution_idx': exec_idx,
+                'input': table_html,
+                'input_mode': cls.MODE_TEXT,
+                'is_table': True,
+                'is_worksheet_mode': not is_presentation,
+                'embedded_images': table_embedded_images,
+                'section_level': depth,
+            }
+            cells_data.append(cell)
+            exec_idx += 1
+
         def process_element(elem: ET.Element, depth: int = 0):
             nonlocal exec_idx
             tag = elem.tag
+
+            if tag == 'Table':
+                process_table(elem, depth)
+                return
+
+            if tag == 'Text-field':
+                process_text_field(elem, depth)
+                return
 
             if tag == 'Section':
                 col = elem.attrib.get('collapsed', 'false').lower() == 'true'
@@ -131,7 +420,7 @@ class WorksheetIO:
                             for font in fonts:
                                 bg = font.attrib.get('background', '')
                                 fg = font.attrib.get('foreground', '') or font.attrib.get('color', '')
-                                ftxt = ''.join(font.itertext())
+                                ftxt = cls.clean_octal_escapes(''.join(font.itertext()))
                                 bg_val = _parse_worksheet_color(bg)
                                 fg_val = _parse_worksheet_color(fg)
                                 if bg_val:
@@ -146,9 +435,9 @@ class WorksheetIO:
                                 style_str = " ".join(style_items)
                                 html_parts.append(f'<span style="{style_str}">{ftxt}</span>')
                                 if font.tail:
-                                    html_parts.append(f"<span>{font.tail}</span>")
+                                    html_parts.append(f"<span>{cls.clean_octal_escapes(font.tail)}</span>")
                         else:
-                            txt = ''.join(tf.itertext()).strip()
+                            txt = cls.clean_octal_escapes(''.join(tf.itertext()).strip())
                             tf_bg = tf.attrib.get('background', '')
                             tf_fg = tf.attrib.get('foreground', '') or tf.attrib.get('color', '')
                             bg_val = _parse_worksheet_color(tf_bg)
@@ -166,8 +455,8 @@ class WorksheetIO:
                             if txt:
                                 html_parts.append(f'<span style="{style_str}">{txt}</span>')
                         if tf.tail:
-                            html_parts.append(f"<span>{tf.tail}</span>")
-                    title_text = ''.join(title_elem.itertext()).strip()
+                            html_parts.append(f"<span>{cls.clean_octal_escapes(tf.tail)}</span>")
+                    title_text = cls.clean_octal_escapes(''.join(title_elem.itertext()).strip())
 
                 sec_cell = {
                     'cell_id': str(uuid.uuid4())[:8],
@@ -347,106 +636,7 @@ class WorksheetIO:
 
                 if inp is not None:
                     for tf in inp.iter('Text-field'):
-                        prompt = tf.attrib.get('prompt', '')
-                        style = tf.attrib.get('style', '')
-
-                        # 1. Check for embedded images
-                        imgs = tf.findall('.//Image')
-                        for img in imgs:
-                            raw_img_text = img.text or ""
-                            img_bytes = decode_worksheet_image(raw_img_text)
-                            if img_bytes:
-                                img_b64 = base64.b64encode(img_bytes).decode('ascii')
-                                img_id = f"img_{uuid.uuid4().hex[:8]}"
-                                raw_w = int(img.attrib.get('width', '500'))
-                                raw_h = int(img.attrib.get('height', '350'))
-                                img_w, img_h = cls._calculate_display_dimensions(raw_w, raw_h, img_bytes)
-                                img_tag = f'<img src="{img_id}" width="{img_w}" height="{img_h}"/>'
-                                cell = {
-                                    'cell_id': str(uuid.uuid4())[:8],
-                                    'execution_idx': exec_idx,
-                                    'input': img_tag,
-                                    'input_mode': cls.MODE_TEXT,
-                                    'is_worksheet_mode': not is_presentation,
-                                    'embedded_images': {img_id: img_b64},
-                                    'section_level': depth,
-                                }
-                                cells_data.append(cell)
-                                exec_idx += 1
-
-                        # 2. Check for Math equations
-                        eqs = tf.findall('.//Equation')
-                        added_eq = False
-                        if eqs:
-                            for eq in eqs:
-                                m_str, l_str = get_equation_math(eq)
-                                if not m_str.strip() or m_str == 'JSFH' or cls._is_base64_mprintslash(m_str):
-                                    continue  # Filter out empty placeholder lines (JSFH)
-                                is_not_exec = (eq.attrib.get('executable', 'true').lower() == 'false') or (tf.attrib.get('style', '') == 'Text' and not tf.attrib.get('prompt', '').strip())
-                                is_exec = not is_not_exec
-                                cell = {
-                                    'cell_id': str(uuid.uuid4())[:8],
-                                    'execution_idx': exec_idx,
-                                    'input': m_str,
-                                    'input_mode': cls.MODE_2D_MATH if is_exec else cls.MODE_NONEXEC_MATH,
-                                    'is_worksheet_mode': not is_presentation,
-                                    'section_level': depth,
-                                }
-                                if out_result:
-                                    cell['result'] = out_result
-                                    out_result = None
-                                cells_data.append(cell)
-                                exec_idx += 1
-                                added_eq = True
-
-                        # 3. Formatted text
-                        tf_clean = cls._extract_tf_text(tf)
-                        if tf_clean and not cls._is_base64_mprintslash(tf_clean) and not imgs:
-                            if added_eq and tf_clean == '=':
-                                continue
-                            prefix = "# " if style == 'Title' else ("## " if style == 'Heading 1' else "")
-                            tf_bg = tf.attrib.get('background', '')
-                            fonts = list(tf.findall('.//Font'))
-                            html_pieces = []
-                            has_font_bg = False
-                            for font in fonts:
-                                bg = font.attrib.get('background', '')
-                                ftxt = ''.join(font.itertext()).strip()
-                                ftxt = re.sub(r'\bJSFH\b', '', ftxt).strip()
-                                if bg and ftxt:
-                                    has_font_bg = True
-                                    m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', bg)
-                                    if m_rgb:
-                                        r_c, g_c, b_c = m_rgb.groups()
-                                        html_pieces.append(f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{ftxt}</span>')
-                                    else:
-                                        html_pieces.append(ftxt)
-                                elif ftxt:
-                                    html_pieces.append(ftxt)
-
-                            if has_font_bg and html_pieces:
-                                formatted_input = " ".join(html_pieces)
-                            elif tf_bg:
-                                m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', tf_bg)
-                                if m_rgb:
-                                    r_c, g_c, b_c = m_rgb.groups()
-                                    formatted_input = f'<span style="background-color: rgb({r_c},{g_c},{b_c}); color: #000000; font-weight: bold; border-radius: 3px; padding: 2px 6px;">{tf_clean}</span>'
-                                else:
-                                    formatted_input = prefix + tf_clean
-                            else:
-                                formatted_input = prefix + tf_clean
-
-                            is_1d_input = (style in ('Maple Input', 'OpenMath Input', '1D Input')) or (prompt and prompt.strip() == '>')
-                            cell = {
-                                'cell_id': str(uuid.uuid4())[:8],
-                                'execution_idx': exec_idx,
-                                'input': formatted_input,
-                                'input_mode': cls.MODE_1D_MATH if is_1d_input else cls.MODE_TEXT,
-                                'is_worksheet_mode': not is_presentation,
-                                'section_level': depth,
-                            }
-                            cells_data.append(cell)
-                            exec_idx += 1
+                        process_text_field(tf, depth, out_result)
                 return
 
             else:
@@ -454,25 +644,73 @@ class WorksheetIO:
                     process_element(child, depth)
 
         for child in root:
-            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input'):
+            if child.tag in ('Section', 'Presentation-Block', 'Group', 'Input', 'Text-field', 'Table'):
                 process_element(child, 0)
 
-        return cells_data
+        # Merge consecutive plain-text document cells within the same section
+        merged_cells: List[Dict[str, Any]] = []
+        for cell in cells_data:
+            if (merged_cells and
+                not cell.get('is_section_header') and
+                not merged_cells[-1].get('is_section_header') and
+                cell.get('section_level') == merged_cells[-1].get('section_level') and
+                cell.get('input_mode') == cls.MODE_TEXT and
+                merged_cells[-1].get('input_mode') == cls.MODE_TEXT and
+                not cell.get('result') and not merged_cells[-1].get('result') and
+                not cell.get('embedded_images') and not merged_cells[-1].get('embedded_images') and
+                '<table' not in cell.get('input', '').lower() and '<table' not in merged_cells[-1].get('input', '').lower() and
+                not cell.get('spans') and not merged_cells[-1].get('spans')):
+                
+                prev_input = merged_cells[-1].get('input', '').rstrip()
+                cur_input = cell.get('input', '').lstrip()
+                if not prev_input.startswith('#') and not cur_input.startswith('#'):
+                    if '<' in prev_input or '<' in cur_input:
+                        merged_cells[-1]['input'] = prev_input + '<br/>' + cur_input
+                    else:
+                        merged_cells[-1]['input'] = prev_input + '\n' + cur_input
+                    continue
+
+            merged_cells.append(cell)
+
+        for idx, cell in enumerate(merged_cells, 1):
+            cell['execution_idx'] = idx
+
+        return merged_cells
+
+    @classmethod
+    def clean_octal_escapes(cls, s: str) -> str:
+        """Decode octal escape sequences (e.g. \\303\\270 -> ø) common in Maple .mw non-ASCII text."""
+        if not s or '\\' not in s:
+            return s or ""
+        def repl(m):
+            try:
+                oct_bytes = bytes(int(x, 8) for x in re.findall(r'\\([0-7]{3})', m.group(0)))
+                return oct_bytes.decode('utf-8', errors='replace')
+            except Exception:
+                return m.group(0)
+        return re.sub(r'(?:\\[0-7]{3})+', repl, s)
 
     @classmethod
     def _extract_tf_text(cls, tf: ET.Element) -> str:
-        """Extract text from Text-field excluding Equation and Image children."""
+        """Extract text from Text-field excluding Equation, Math, and Image children, while supporting Hyperlinks."""
         parts = []
         if tf.text:
             parts.append(tf.text)
         for child in tf:
-            if child.tag not in ('Equation', 'Image'):
+            if child.tag == 'Hyperlink':
+                link = child.attrib.get('linktarget', '')
+                tip = child.attrib.get('tooltip', '')
+                inner = cls._extract_tf_text(child)
+                tip_attr = f' title="{tip}"' if tip else ''
+                parts.append(f'<a href="{link}"{tip_attr} style="color: #0000ee; text-decoration: underline;">{inner}</a>')
+            elif child.tag not in ('Equation', 'Image', 'Math'):
                 parts.append(cls._extract_tf_text(child))
             if child.tail:
                 parts.append(child.tail)
         raw = "".join(parts).strip()
         cleaned = re.sub(r'\bJSFH\b', '', raw).strip()
         cleaned = re.sub(r'LUkl[A-Za-z0-9+/=]+', '', cleaned).strip()
+        cleaned = cls.clean_octal_escapes(cleaned)
         return cleaned
 
     @classmethod
@@ -637,6 +875,35 @@ class WorksheetIO:
         vp.attrib["presentation"] = "true"
         vp.attrib["autoexpanding_sections"] = "true"
 
+        # Standard Maple Styles block from official StylesTemplate.mw
+        styles = ET.SubElement(root, "Styles")
+        f_defs = [
+            ("2D Input", {"family": "Times New Roman", "size": "12", "executable": "true", "opaque": "false"}),
+            ("2D Math", {"family": "Times New Roman", "size": "12", "executable": "true", "opaque": "false"}),
+            ("2D Output", {"family": "Times New Roman", "size": "12", "foreground": "[0,0,255]", "readonly": "true", "opaque": "false"}),
+            ("Heading 1", {"family": "Times New Roman", "size": "18", "bold": "true", "opaque": "false"}),
+            ("Heading 2", {"family": "Times New Roman", "size": "16", "bold": "true", "opaque": "false"}),
+            ("Heading 3", {"family": "Times New Roman", "size": "14", "bold": "true", "italic": "true", "opaque": "false"}),
+            ("Heading 4", {"family": "Times New Roman", "size": "12", "italic": "true", "opaque": "false"}),
+            ("Title", {"family": "Times New Roman", "size": "18", "bold": "true", "opaque": "false"}),
+            ("Text", {"family": "Times New Roman", "size": "12", "foreground": "[0,0,0]", "opaque": "false"}),
+        ]
+        for f_name, f_attrs in f_defs:
+            node = ET.SubElement(styles, "Font")
+            node.attrib["name"] = f_name
+            node.attrib.update(f_attrs)
+
+        l_defs = [
+            ("Normal", {"alignment": "left", "bullet": "none", "linespacing": "0.0"}),
+            ("Heading 1", {"alignment": "left", "linespacing": "0.0", "spaceabove": "8", "spacebelow": "4"}),
+            ("Heading 2", {"alignment": "left", "linespacing": "0.0", "spaceabove": "8", "spacebelow": "2"}),
+            ("Title", {"alignment": "centred", "linespacing": "0.0", "spaceabove": "12", "spacebelow": "12"}),
+        ]
+        for l_name, l_attrs in l_defs:
+            node = ET.SubElement(styles, "Layout")
+            node.attrib["name"] = l_name
+            node.attrib.update(l_attrs)
+
         # Organize by sections if section headers exist
         current_container = root
         active_sections = []
@@ -663,12 +930,81 @@ class WorksheetIO:
                 continue
 
             parent = active_sections[-1] if active_sections else root
-            group = ET.SubElement(parent, "Group")
-            group.attrib["labelreference"] = f"L{idx}"
-
             inp_mode = cell.get("input_mode", cls.MODE_2D_MATH)
             input_text = cell.get("input", "").strip()
             embedded_imgs = cell.get("embedded_images", {})
+            is_table = cell.get("is_table", False) or "<table" in input_text.lower()
+
+            if is_table:
+                tbl = ET.SubElement(parent, "Table")
+                tbl.attrib["visible"] = "true"
+                tbl.attrib["exterior"] = "all"
+                tbl.attrib["interior"] = "group"
+                tbl.attrib["alignment"] = "left"
+                tbl.attrib["pagebreak"] = "row"
+                tbl.attrib["showgroup"] = "true"
+                tbl.attrib["showinput"] = "true"
+                tbl.attrib["showlabel"] = "true"
+                tbl.attrib["width"] = "100%"
+                row_matches = re.findall(r'<tr[^>]*>(.*?)</tr>', input_text, flags=re.DOTALL | re.IGNORECASE)
+                first_row = True
+                for row_html in row_matches:
+                    cells_in_row = re.findall(r'<td[^>]*>(.*?)</td>', row_html, flags=re.DOTALL | re.IGNORECASE)
+                    if first_row:
+                        for _ in cells_in_row:
+                            col_elem = ET.SubElement(tbl, "Table-Column")
+                            col_elem.attrib["weight"] = "100"
+                            col_elem.attrib["separator"] = "true"
+                        first_row = False
+                    row_elem = ET.SubElement(tbl, "Table-Row")
+                    row_elem.attrib["align"] = "top"
+                    row_elem.attrib["separator"] = "true"
+                    for cell_html in cells_in_row:
+                        c_elem = ET.SubElement(row_elem, "Table-Cell")
+                        c_elem.attrib["padding"] = "5"
+                        c_elem.attrib["visible"] = "true"
+                        # Preserve rowspan, colspan, fillcolor if present
+                        rs_m = re.search(r'rowspan=[\'"](\d+)[\'"]', cell_html)
+                        if rs_m:
+                            c_elem.attrib["rowspan"] = rs_m.group(1)
+                        cs_m = re.search(r'colspan=[\'"](\d+)[\'"]', cell_html)
+                        if cs_m:
+                            c_elem.attrib["columnspan"] = cs_m.group(1)
+                        bg_m = re.search(r'background-color:\s*#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})', cell_html)
+                        if bg_m:
+                            r_v = int(bg_m.group(1), 16)
+                            g_v = int(bg_m.group(2), 16)
+                            b_v = int(bg_m.group(3), 16)
+                            c_elem.attrib["fillcolor"] = f"[{r_v},{g_v},{b_v}]"
+                        pb = ET.SubElement(c_elem, "Presentation-Block")
+                        grp = ET.SubElement(pb, "Group")
+                        grp.attrib["view"] = "presentation"
+                        grp_inp = ET.SubElement(grp, "Input")
+                        tf = ET.SubElement(grp_inp, "Text-field")
+                        tf.attrib["style"] = "Text"
+                        tf.attrib["layout"] = "Normal"
+
+                        img_srcs = re.findall(r'src=["\']([^"\']+)["\']', cell_html)
+                        for src in img_srcs:
+                            if src in embedded_imgs:
+                                b64_d = embedded_imgs[src]
+                                w, h = cls._get_save_image_dimensions(b64_d, cell_html, src)
+                                im_node = ET.SubElement(tf, "Image")
+                                im_node.attrib["width"] = str(w)
+                                im_node.attrib["height"] = str(h)
+                                im_node.text = b64_d
+
+                        clean = re.sub(r'<img[^>]*>', '', cell_html, flags=re.IGNORECASE)
+                        clean = re.sub(r'<br\s*/?>', '\n', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'<div[^>]*>', '', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'</div>', '\n', clean, flags=re.IGNORECASE)
+                        clean = re.sub(r'<[^>]+>', '', clean).strip()
+                        if clean and clean != '&nbsp;':
+                            tf.text = clean
+                continue
+
+            group = ET.SubElement(parent, "Group")
+            group.attrib["labelreference"] = f"L{idx}"
 
             inp = ET.SubElement(group, "Input")
 

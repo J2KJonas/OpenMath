@@ -4,11 +4,13 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 
 **Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
 
-![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)
+![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Web-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen)
 ![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green)
 ![SymPy](https://img.shields.io/badge/Engine-SymPy-orange)
 ![Matplotlib](https://img.shields.io/badge/Plots%20%26%20LaTeX-Matplotlib-blue)
+[![WebApp](https://img.shields.io/badge/WebApp-Live%20on%20GitHub%20Pages-brightgreen)](https://j2kjonas.github.io/OpenMath/)
+![WebAssembly](https://img.shields.io/badge/WebAssembly-Pyodide-purple)
 
 ---
 
@@ -71,14 +73,27 @@ A desktop mathematical calculator application focusing on symbolic computation, 
   - **Modern Slate Dark**: Sleek dark IDE theme with cyan mathematical highlights.
   - **Academic Light**: Clean, warm white/slate academic aesthetic.
 
+### 7. Responsive WebApp (GitHub Pages & Mobile-Friendly)
+- **Live in Browser**: Hosted directly via GitHub Pages at **[https://j2kjonas.github.io/OpenMath/](https://j2kjonas.github.io/OpenMath/)**.
+- **100% Client-Side WebAssembly**: Powered by Pyodide (Python 3.11 in WASM), SymPy, and NumPy. No backend servers required; runs completely in-browser.
+- **Desktop & Phone Responsive**:
+  - **Desktop**: Full worksheet with expandable math palettes, interactive Matrix Wizard, and High-DPI KaTeX math typesetting.
+  - **Phone / Mobile**: Ergonomic mobile math dock with quick-symbol ribbon, expandable bottom keypad drawer (123, fx, calc, matrix, symbols, embedded), and touch-friendly targets.
+- **Local Web Server**: Launch instantly with a single command:
+  ```bash
+  python run_web.py
+  ```
+
 ---
 
 ## Technology Stack
 
-- **GUI Framework**: PyQt6
-- **Math Engine**: SymPy
-- **Plotting & LaTeX Rendering**: Matplotlib (`FigureCanvasQTAgg` & `FigureCanvasAgg`)
-- **Numerical Support**: NumPy
+- **Desktop GUI**: PyQt6
+- **Web Interface**: HTML5, CSS3 (Responsive Design Tokens), ES6 JavaScript, Web Workers
+- **Math Engine**: SymPy (Desktop & WebAssembly)
+- **Mathematical Typesetting**: Matplotlib MathText (Desktop) / KaTeX (Web)
+- **Plotting**: Matplotlib (Desktop) / HTML5 Canvas Engine (Web)
+- **Numerical Support**: NumPy (Desktop & WebAssembly)
 
 ---
 
@@ -137,7 +152,8 @@ cd calculator
 - *(Optional)* Create Desktop & Start Menu shortcuts: double-click **`create_shortcut_windows.bat`**
 
 #### macOS (Apple Silicon M1/M2/M3/M4 & Intel):
-- Run in terminal:
+- **One-Click Launch**: Double-click **`OpenMath.command`** (or **`run.command`**) directly in Finder. It automatically checks requirements, creates an isolated virtual environment and installs dependencies if needed, then launches OpenMath!
+- Or run in terminal:
   ```bash
   chmod +x run.sh
   ./run.sh
@@ -175,6 +191,8 @@ cd calculator
 calculator/
 ├── main.py                     # Application entry point (High-DPI & taskbar configured)
 ├── run.py                      # Quick Python launcher script
+├── OpenMath.command            # One-click double-clickable launcher for macOS
+├── run.command                 # One-click launcher alias for macOS
 ├── run.bat                     # One-click launcher for Windows
 ├── run.sh                      # Universal launcher for macOS (Apple Silicon / Intel) & Linux
 ├── create_shortcut.sh          # macOS Application Bundle & Desktop shortcut generator

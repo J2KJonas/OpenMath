@@ -1,0 +1,16 @@
+{
+  "name": "OpenMath Web CAS Calculator",
+  "short_name": "OpenMath",
+  "description": "Symbolic mathematical calculator, CAS engine, and interactive worksheet",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1e222b",
+  "theme_color": "#38bdf8",
+  "icons": [
+    {
+      "src": "./favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
