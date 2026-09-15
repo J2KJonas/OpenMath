@@ -14,14 +14,12 @@ import uuid
 # Ensure cas_engine is accessible on path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from cas_engine.engine import CASEngine
-from cas_engine.plot_engine import PlotData
-
 _engine = None
 
-def get_engine() -> CASEngine:
+def get_engine():
     global _engine
     if _engine is None:
+        from cas_engine.engine import CASEngine
         _engine = CASEngine()
     return _engine
 
@@ -138,11 +136,19 @@ def get_variables_list() -> dict:
 
 def get_system_info() -> dict:
     """Return runtime metadata."""
-    import sympy
-    import numpy
+    try:
+        import sympy
+        s_ver = getattr(sympy, '__version__', 'ready')
+    except Exception:
+        s_ver = "loading"
+    try:
+        import numpy
+        n_ver = getattr(numpy, '__version__', 'ready')
+    except Exception:
+        n_ver = "loading"
     return {
-        "sympy_version": sympy.__version__,
-        "numpy_version": numpy.__version__,
+        "sympy_version": s_ver,
+        "numpy_version": n_ver,
         "python_version": sys.version
     }
 

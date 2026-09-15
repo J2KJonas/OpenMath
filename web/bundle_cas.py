@@ -21,7 +21,26 @@ def bundle_cas():
             if fname.endswith(".py"):
                 fpath = os.path.join(cas_engine_dir, fname)
                 with open(fpath, "r", encoding="utf-8") as f:
-                    bundle[f"cas_engine/{fname}"] = f.read()
+                    content = f.read()
+                    if fname == "__init__.py":
+                        content = '''"""CAS Engine Web Worker Entry"""
+try:
+    from .engine import CASEngine
+    from .parser import MathParser, ParseResult
+    from .formatter import MathFormatter, CASResult
+    from .plot_engine import PlotEngine, PlotData, CurveData
+    from .embedded import EmbeddedMath
+    from .error_suggester import suggest_fix
+    from .units import UNIT_FAMILIES, UNIT_LOOKUP
+except ImportError:
+    CASEngine = None
+
+from .mw_importer import WorksheetIO
+from .wheeler import decode_worksheet_image
+
+__all__ = ['WorksheetIO', 'decode_worksheet_image', 'CASEngine']
+'''
+                    bundle[f"cas_engine/{fname}"] = content
 
     # Read cas_bridge.py
     if os.path.isfile(bridge_path):

@@ -99,6 +99,14 @@ export class WorksheetView {
     });
 
     window.addEventListener("resize", () => this.drawScopeOverlay());
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".image-resize-wrapper")) {
+        document.querySelectorAll(".image-resize-wrapper.image-selected").forEach(w => {
+          w.classList.remove("image-selected");
+        });
+      }
+    });
   }
 
   addCell(options = {}, insertIntoDom = true) {
@@ -181,9 +189,7 @@ export class WorksheetView {
       const toggleBtn = cellDiv.querySelector(".section-toggle-btn");
       toggleBtn.onclick = (e) => {
         e.stopPropagation();
-        cell.isCollapsed = !cell.isCollapsed;
-        toggleBtn.textContent = cell.isCollapsed ? '▶' : '▼';
-        this.updateSectionFolding();
+        this.onSectionToggled(cell.id);
       };
 
       const titleEdit = cellDiv.querySelector(".section-title-edit");
@@ -281,6 +287,7 @@ export class WorksheetView {
     }
 
     cell.domElement = cellDiv;
+    this.setupCellInteractiveElements(cellDiv, cell);
 
     // Insert into DOM in order if requested
     if (insertIntoDom && this.cellsContainer) {
@@ -382,26 +389,52 @@ export class WorksheetView {
       return;
     }
 
-    // Show non-blocking evaluating indicator in cell output container
+    // 1. Try FastCAS first for instant 0.1ms calculation without waiting for worker
+    if (this.app.fastCAS) {
+      const fastRes = this.app.fastCAS.evaluate(input, this.app.precision || 10);
+      if (fastRes && !fastRes.error && (fastRes.result_type !== "Symbolic" || input.startsWith("diff") || input.startsWith("expand") || input.includes(":=") || !this.app.isPyodideReady)) {
+        this.handleCellResult({
+          id: cell.id,
+          docId: this.docId,
+          ...fastRes
+        });
+        // Sync expression to Pyodide in background if Pyodide is ready
+        if (this.app.isPyodideReady && this.app.worker) {
+          this.app.worker.postMessage({
+            type: "EVALUATE",
+            id: cell.id,
+            docId: this.docId,
+            expr: input,
+            precision: this.app.precision || 10,
+            syncOnly: true
+          });
+        }
+        return;
+      }
+    }
+
+    // 2. Delegate to Worker if needed
     const outContainer = cell.domElement && cell.domElement.querySelector(".cell-output-container");
     if (outContainer) {
       outContainer.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; padding: 6px 0; color: var(--text-muted); font-size: 11px;">
           <span class="cas-init-spinner" style="width:11px; height:11px; border-width:2px; margin-right:6px;"></span>
-          <span>${this.app.isWorkerReady ? "Evaluating..." : "Waiting for CAS engine..."}</span>
+          <span>${this.app.isPyodideReady ? "Evaluating..." : "Evaluating with CAS engine..."}</span>
         </div>
       `;
     }
 
-    this.app.worker.postMessage({
-      type: "EVALUATE",
-      id: cell.id,
-      docId: this.docId,
-      expr: input,
-      precision: this.app.precision || 10
-    });
+    if (this.app.worker) {
+      this.app.worker.postMessage({
+        type: "EVALUATE",
+        id: cell.id,
+        docId: this.docId,
+        expr: input,
+        precision: this.app.precision || 10
+      });
+    }
 
-    this.app.updateStatusMessage(this.app.isWorkerReady ? "Evaluating..." : '<span class="cas-init-spinner"></span> Evaluating expression (waiting for CAS engine)...');
+    this.app.updateStatusMessage("Evaluating...");
   }
 
   handleCellResult(resultData) {
@@ -582,88 +615,191 @@ export class WorksheetView {
     });
   }
 
-  updateSectionFolding() {
-    const collapsedStack = [];
-
+  initSectionFolding() {
+    const collapsedDepthStack = [];
     for (const cell of this.cells) {
       const secLevel = Math.max(0, cell.sectionLevel || 0);
-      if (cell.isSectionHeader) {
-        // Pop any collapsed levels at or deeper than current section level
-        while (collapsedStack.length > 0 && collapsedStack[collapsedStack.length - 1] >= secLevel) {
-          collapsedStack.pop();
+      const isSec = !!cell.isSectionHeader;
+
+      if (isSec) {
+        while (collapsedDepthStack.length > 0 && collapsedDepthStack[collapsedDepthStack.length - 1] >= secLevel) {
+          collapsedDepthStack.pop();
         }
-        const isHidden = collapsedStack.length > 0;
-        if (cell.domElement) {
-          cell.domElement.style.display = isHidden ? "none" : "flex";
-        }
-        // If this section is collapsed and not hidden itself, track its level
-        if (cell.isCollapsed && !isHidden) {
-          collapsedStack.push(secLevel);
-        }
+      } else if (cell._isOutsideSection) {
+        collapsedDepthStack.length = 0;
       } else {
-        // Content cell: hidden if inside any currently collapsed section
-        while (collapsedStack.length > 0 && collapsedStack[collapsedStack.length - 1] > secLevel) {
-          collapsedStack.pop();
+        while (collapsedDepthStack.length > 0 && collapsedDepthStack[collapsedDepthStack.length - 1] > secLevel) {
+          collapsedDepthStack.pop();
         }
-        const isHidden = collapsedStack.length > 0;
-        if (cell.domElement) {
-          cell.domElement.style.display = isHidden ? "none" : "flex";
-        }
+      }
+
+      const isHidden = collapsedDepthStack.length > 0;
+      if (cell.domElement) {
+        cell.domElement.style.display = isHidden ? "none" : "flex";
+      }
+
+      if (isSec && cell.isCollapsed) {
+        collapsedDepthStack.push(secLevel);
       }
     }
   }
 
+  updateSectionFolding() {
+    this.initSectionFolding();
+  }
+
+  onSectionToggled(sectionCellId) {
+    const idx = this.cells.findIndex(c => c.id === sectionCellId);
+    if (idx === -1 || idx >= this.cells.length) return;
+
+    const secCell = this.cells[idx];
+    secCell.isCollapsed = !secCell.isCollapsed;
+
+    const toggleBtn = secCell.domElement?.querySelector(".section-toggle-btn");
+    if (toggleBtn) {
+      toggleBtn.textContent = secCell.isCollapsed ? '▶' : '▼';
+    }
+
+    const parentLevel = secCell.sectionLevel || 0;
+    const isCollapsed = secCell.isCollapsed;
+    let collapsedSublevel = null;
+
+    for (let i = idx + 1; i < this.cells.length; i++) {
+      const c = this.cells[i];
+      const cLevel = c.sectionLevel || 0;
+
+      if (c.isSectionHeader) {
+        if (cLevel <= parentLevel) {
+          // Exited current section hierarchy
+          break;
+        }
+        if (isCollapsed) {
+          if (c.domElement) c.domElement.style.display = "none";
+        } else {
+          if (collapsedSublevel !== null && cLevel > collapsedSublevel) {
+            if (c.domElement) c.domElement.style.display = "none";
+          } else {
+            if (c.domElement) c.domElement.style.display = "flex";
+            if (c.isCollapsed) {
+              collapsedSublevel = cLevel;
+            } else {
+              collapsedSublevel = null;
+            }
+          }
+        }
+        continue;
+      }
+
+      if (c._isOutsideSection || cLevel < parentLevel) {
+        break;
+      }
+
+      if (isCollapsed) {
+        if (c.domElement) c.domElement.style.display = "none";
+      } else {
+        if (collapsedSublevel !== null) {
+          if (c.domElement) c.domElement.style.display = "none";
+        } else {
+          if (c.domElement) c.domElement.style.display = "flex";
+        }
+      }
+    }
+
+    this.drawScopeOverlay();
+  }
+
   drawScopeOverlay() {
+    if (this._scopeOverlayScheduled) return;
+    this._scopeOverlayScheduled = true;
+    requestAnimationFrame(() => {
+      this._scopeOverlayScheduled = false;
+      this._performDrawScopeOverlay();
+    });
+  }
+
+  _performDrawScopeOverlay() {
     if (!this.scopeCanvas || !this.cellsContainer) return;
-    const ctx = this.scopeCanvas.getContext("2d");
-    const rect = this.cellsContainer.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const canvasRect = this.scopeCanvas.getBoundingClientRect();
+    if (canvasRect.width === 0 || canvasRect.height === 0) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const targetW = Math.round(rect.width * dpr);
-    const targetH = Math.round(rect.height * dpr);
+    const targetW = Math.round(canvasRect.width * dpr);
+    const targetH = Math.round(canvasRect.height * dpr);
 
     if (this.scopeCanvas.width !== targetW || this.scopeCanvas.height !== targetH) {
       this.scopeCanvas.width = targetW;
       this.scopeCanvas.height = targetH;
     }
+    const ctx = this.scopeCanvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
 
     const isLight = this.app.theme === "light";
     ctx.strokeStyle = isLight ? "#8e9aaf" : "#64748b";
     ctx.lineWidth = 1;
+    ctx.lineCap = "square";
 
-    // Draw hierarchical vertical lines from disclosure buttons
+    // Stack to track active open sections in a single O(N) linear pass
+    const openSections = [];
+
     for (let i = 0; i < this.cells.length; i++) {
       const cell = this.cells[i];
-      if (!cell.isSectionHeader || cell.isCollapsed || !cell.domElement || cell.domElement.style.display === "none") {
-        continue;
+      if (!cell.domElement || cell.domElement.style.display === "none") continue;
+
+      const secLevel = cell.sectionLevel || 0;
+
+      if (cell.isSectionHeader) {
+        while (openSections.length > 0 && openSections[openSections.length - 1].cell.sectionLevel >= secLevel) {
+          const finished = openSections.pop();
+          if (finished.lastCell && finished.lastCell.domElement) {
+            const lastRect = finished.lastCell.domElement.getBoundingClientRect();
+            const endY = Math.floor(lastRect.bottom - canvasRect.top - 4);
+            if (endY > finished.startY + 4) {
+              ctx.beginPath();
+              ctx.moveTo(finished.startX, finished.startY);
+              ctx.lineTo(finished.startX, endY);
+              ctx.lineTo(finished.startX + 8, endY);
+              ctx.stroke();
+            }
+          }
+        }
+
+        if (!cell.isCollapsed) {
+          const btn = cell.domElement.querySelector(".section-toggle-btn");
+          if (btn) {
+            const btnRect = btn.getBoundingClientRect();
+            const startX = Math.floor(btnRect.left - canvasRect.left + btnRect.width / 2) + 0.5;
+            const startY = Math.floor(btnRect.bottom - canvasRect.top - 2);
+            openSections.push({
+              cell,
+              startX,
+              startY,
+              lastCell: null
+            });
+          }
+        }
+      } else {
+        for (let s = 0; s < openSections.length; s++) {
+          if (!cell._isOutsideSection && cell.sectionLevel >= openSections[s].cell.sectionLevel) {
+            openSections[s].lastCell = cell;
+          }
+        }
       }
+    }
 
-      const btn = cell.domElement.querySelector(".section-toggle-btn");
-      if (!btn) continue;
-
-      const btnRect = btn.getBoundingClientRect();
-      const startX = btnRect.left - rect.left + btnRect.width / 2;
-      const startY = btnRect.bottom - rect.top;
-
-      let lastY = startY;
-      for (let j = i + 1; j < this.cells.length; j++) {
-        const child = this.cells[j];
-        if (!child.domElement || child.domElement.style.display === "none") continue;
-        if (child.isSectionHeader && child.sectionLevel <= cell.sectionLevel) break;
-
-        const childRect = child.domElement.getBoundingClientRect();
-        lastY = childRect.bottom - rect.top - 4;
-      }
-
-      if (lastY > startY + 10) {
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(startX, lastY);
-        ctx.lineTo(startX + 8, lastY); // Horizontal tick └───
-        ctx.stroke();
+    // Flush remaining open sections
+    while (openSections.length > 0) {
+      const finished = openSections.pop();
+      if (finished.lastCell && finished.lastCell.domElement) {
+        const lastRect = finished.lastCell.domElement.getBoundingClientRect();
+        const endY = Math.floor(lastRect.bottom - canvasRect.top - 4);
+        if (endY > finished.startY + 4) {
+          ctx.beginPath();
+          ctx.moveTo(finished.startX, finished.startY);
+          ctx.lineTo(finished.startX, endY);
+          ctx.lineTo(finished.startX + 8, endY);
+          ctx.stroke();
+        }
       }
     }
   }
@@ -703,57 +839,311 @@ export class WorksheetView {
     }
   }
 
-  loadImportedCells(cellList) {
+  loadImportedCells(cellList, progressCallback = null) {
     this.cellsContainer.innerHTML = "";
     this.cells = [];
     this.executionCounter = 0;
     this.plotInstances.clear();
 
-    const fragment = document.createDocumentFragment();
-
-    for (const c of cellList) {
-      const isSec = bool(c.is_section_header);
-      const mode = isSec ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : (c.input_mode === 3 ? "nonexec_math" : "2d_math")));
-      const isCollapsed = bool(c.is_collapsed);
-      const hasResult = c.result && (c.result.exact_latex || c.result.numeric_latex || c.result.exact_text || c.result.numeric_text || c.result.is_plot || c.result.error);
-      const eqIdx = hasResult ? ++this.executionCounter : null;
-
-      const cellObj = this.addCell({
-        mode,
-        isSectionHeader: isSec,
-        sectionLevel: c.section_level || 0,
-        sectionTitle: cleanOctalEscapes(c.section_title || (isSec ? c.input : "")),
-        sectionHtml: c.section_html || null,
-        isCollapsed,
-        input: cleanOctalEscapes(c.input || ""),
-        isTable: !!c.is_table,
-        result: c.result || null,
-        error: c.result?.error || null,
-        equationIndex: eqIdx,
-        embeddedImages: c.embedded_images || c.embeddedImages || null
-      }, false);
-
-      if (eqIdx && cellObj && cellObj.domElement) {
-        cellObj.equationIndex = eqIdx;
-        const eqLabel = cellObj.domElement.querySelector(".cell-equation-label");
-        if (eqLabel) eqLabel.textContent = `(${eqIdx})`;
-      }
-
-      if (cellObj && cellObj.domElement) {
-        fragment.appendChild(cellObj.domElement);
-      }
+    const totalCells = cellList.length;
+    if (progressCallback) {
+      progressCallback(0, totalCells, `Loading 0 of ${totalCells} elements...`);
     }
 
-    this.cellsContainer.appendChild(fragment);
+    const batchSize = 100;
+    let idx = 0;
 
-    if (this.cells.length === 0) {
-      this.addCell();
-    } else {
-      this.setActiveCell(this.cells[0].id);
+    const processNextBatch = () => {
+      const end = Math.min(idx + batchSize, totalCells);
+      const batchFragment = document.createDocumentFragment();
+      for (; idx < end; idx++) {
+        const c = cellList[idx];
+        const isSec = bool(c.is_section_header);
+        const mode = isSec ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : (c.input_mode === 3 ? "nonexec_math" : "2d_math")));
+        const isCollapsed = bool(c.is_collapsed);
+        const hasResult = c.result && (c.result.exact_latex || c.result.numeric_latex || c.result.exact_text || c.result.numeric_text || c.result.is_plot || c.result.error);
+        const eqIdx = hasResult ? ++this.executionCounter : null;
+
+        const cellObj = this.addCell({
+          mode,
+          isSectionHeader: isSec,
+          sectionLevel: c.section_level || 0,
+          sectionTitle: cleanOctalEscapes(c.section_title || (isSec ? c.input : "")),
+          sectionHtml: c.section_html || null,
+          isCollapsed,
+          input: cleanOctalEscapes(c.input || ""),
+          isTable: !!c.is_table,
+          result: c.result || null,
+          error: c.result?.error || null,
+          equationIndex: eqIdx,
+          embeddedImages: c.embedded_images || c.embeddedImages || null
+        }, false);
+
+        if (eqIdx && cellObj && cellObj.domElement) {
+          cellObj.equationIndex = eqIdx;
+          const eqLabel = cellObj.domElement.querySelector(".cell-equation-label");
+          if (eqLabel) eqLabel.textContent = `(${eqIdx})`;
+        }
+
+        if (cellObj && cellObj.domElement) {
+          batchFragment.appendChild(cellObj.domElement);
+        }
+      }
+
+      this.cellsContainer.appendChild(batchFragment);
+
+      if (progressCallback) {
+        progressCallback(idx, totalCells, `Loading element ${idx} of ${totalCells}...`);
+      }
+
+      if (idx < totalCells) {
+        setTimeout(processNextBatch, 0);
+      } else {
+        // Complete all batches
+
+        if (this.cells.length === 0) {
+          this.addCell();
+        } else {
+          this.setActiveCell(this.cells[0].id);
+        }
+
+        // Initialize section folding from imported state
+        this.initSectionFolding();
+
+        // Attach interactive resizers & drag handles to all tables and images
+        this.initInteractiveResizers();
+
+        requestAnimationFrame(() => {
+          this.drawScopeOverlay();
+          if (this.app.hideLoadingOverlay) {
+            this.app.hideLoadingOverlay();
+          }
+        });
+      }
+    };
+
+    processNextBatch();
+  }
+
+  initInteractiveResizers() {
+    if (!this.cellsContainer) return;
+    for (const cell of this.cells) {
+      if (cell.domElement) {
+        this.setupCellInteractiveElements(cell.domElement, cell);
+      }
+    }
+  }
+
+  setupCellInteractiveElements(cellDiv, cell) {
+    if (!cellDiv) return;
+
+    // 1. Interactive Images
+    const imgs = cellDiv.querySelectorAll("img");
+    imgs.forEach(img => {
+      this.attachImageInteractions(img, cell);
+    });
+
+    // 2. Interactive Tables
+    const tbls = cellDiv.querySelectorAll("table");
+    tbls.forEach(tbl => {
+      this.attachTableInteractions(tbl, cell);
+    });
+  }
+
+  attachImageInteractions(img, cell) {
+    if (img.dataset.hasInteractiveResize) return;
+    img.dataset.hasInteractiveResize = "true";
+
+    let wrapper = img.parentElement;
+    if (!wrapper || !wrapper.classList.contains("image-resize-wrapper")) {
+      wrapper = document.createElement("div");
+      wrapper.className = "image-resize-wrapper";
+      wrapper.contentEditable = "false";
+      img.parentNode.insertBefore(wrapper, img);
+      wrapper.appendChild(img);
+
+      const corners = ["tl", "tr", "bl", "br"];
+      corners.forEach(c => {
+        const handle = document.createElement("div");
+        handle.className = `image-resize-handle handle-${c}`;
+        handle.dataset.corner = c;
+        wrapper.appendChild(handle);
+      });
     }
 
-    this.updateSectionFolding();
-    requestAnimationFrame(() => this.drawScopeOverlay());
+    img.draggable = true;
+    img.style.cursor = "pointer";
+
+    wrapper.onclick = (e) => {
+      e.stopPropagation();
+      document.querySelectorAll(".image-resize-wrapper.image-selected").forEach(w => {
+        if (w !== wrapper) w.classList.remove("image-selected");
+      });
+      wrapper.classList.add("image-selected");
+    };
+
+    wrapper.querySelectorAll(".image-resize-handle").forEach(handle => {
+      handle.onmousedown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const corner = handle.dataset.corner;
+        const startX = e.clientX;
+        const rect = img.getBoundingClientRect();
+        const startW = rect.width;
+        const startH = rect.height;
+        const ratio = startH > 0 ? (startW / startH) : 1.33;
+
+        const onMouseMove = (ev) => {
+          const dx = ev.clientX - startX;
+          let newW = startW;
+          if (corner === "br" || corner === "tr") {
+            newW = Math.max(50, Math.round(startW + dx));
+          } else {
+            newW = Math.max(50, Math.round(startW - dx));
+          }
+          const newH = Math.round(newW / ratio);
+          img.style.width = `${newW}px`;
+          img.style.height = `${newH}px`;
+          img.width = newW;
+          img.height = newH;
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          const editEl = cell.domElement?.querySelector(".cell-input-edit");
+          if (editEl) {
+            cell.input = editEl.innerHTML;
+          }
+          this.drawScopeOverlay();
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      };
+    });
+  }
+
+  attachTableInteractions(tbl, cell) {
+    if (tbl.dataset.hasInteractiveResize) return;
+    tbl.dataset.hasInteractiveResize = "true";
+
+    let wrapper = tbl.parentElement;
+    if (!wrapper || !wrapper.classList.contains("table-interactive-wrapper")) {
+      wrapper = document.createElement("div");
+      wrapper.className = "table-interactive-wrapper";
+      wrapper.contentEditable = "false";
+      tbl.parentNode.insertBefore(wrapper, tbl);
+      wrapper.appendChild(tbl);
+
+      // Move handle at top-left
+      const moveHandle = document.createElement("div");
+      moveHandle.className = "table-move-handle";
+      moveHandle.title = "Drag table to move";
+      moveHandle.draggable = true;
+      moveHandle.innerHTML = '<span class="grip-dot"></span><span class="grip-dot"></span><span class="grip-dot"></span>';
+      wrapper.appendChild(moveHandle);
+
+      // Corner resize handle at bottom-right
+      const cornerHandle = document.createElement("div");
+      cornerHandle.className = "table-corner-handle";
+      cornerHandle.title = "Drag to resize table";
+      wrapper.appendChild(cornerHandle);
+
+      cornerHandle.onmousedown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const rect = tbl.getBoundingClientRect();
+        const startW = rect.width;
+        const startH = rect.height;
+
+        const onMouseMove = (ev) => {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+          const newW = Math.max(100, Math.round(startW + dx));
+          const newH = Math.max(40, Math.round(startH + dy));
+          tbl.style.width = `${newW}px`;
+          tbl.style.height = `${newH}px`;
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          const editEl = cell.domElement?.querySelector(".cell-input-edit");
+          if (editEl) {
+            cell.input = editEl.innerHTML;
+          }
+          this.drawScopeOverlay();
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      };
+    }
+
+    // Column resizing inside table
+    const cells = tbl.querySelectorAll("th, td");
+    cells.forEach(td => {
+      td.addEventListener("mousemove", (e) => {
+        const rect = td.getBoundingClientRect();
+        const isRightEdge = (rect.right - e.clientX) <= 6;
+        td.style.cursor = isRightEdge ? "col-resize" : "";
+      });
+
+      td.addEventListener("mousedown", (e) => {
+        const rect = td.getBoundingClientRect();
+        const isRightEdge = (rect.right - e.clientX) <= 6;
+        if (!isRightEdge) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const startX = e.clientX;
+        const startW = rect.width;
+        const colIdx = td.cellIndex;
+
+        const guideline = document.createElement("div");
+        guideline.className = "col-resize-guideline";
+        const wrapperRect = wrapper.getBoundingClientRect();
+        guideline.style.left = `${rect.right - wrapperRect.left}px`;
+        guideline.style.height = `${wrapperRect.height}px`;
+        wrapper.appendChild(guideline);
+
+        let finalW = startW;
+        const onMouseMove = (ev) => {
+          const dx = ev.clientX - startX;
+          finalW = Math.max(30, Math.round(startW + dx));
+          guideline.style.left = `${rect.right - wrapperRect.left + dx}px`;
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          if (guideline.parentNode) guideline.remove();
+
+          const allRows = tbl.rows;
+          for (let r = 0; r < allRows.length; r++) {
+            const rowCell = allRows[r].cells[colIdx];
+            if (rowCell) {
+              rowCell.style.width = `${finalW}px`;
+            }
+          }
+
+          const editEl = cell.domElement?.querySelector(".cell-input-edit");
+          if (editEl) {
+            cell.input = editEl.innerHTML;
+          }
+          this.drawScopeOverlay();
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+    });
   }
 
   getSerializableCells() {

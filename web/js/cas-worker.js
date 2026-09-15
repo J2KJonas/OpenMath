@@ -57,6 +57,9 @@ const CAS_ENGINE_FILES = [
   "mw_importer.py"
 ];
 
+let isMathReady = false;
+let pendingEvaluations = [];
+
 async function initPyodideRuntime(basePath = "../") {
   try {
     postMessage({ type: "STATUS", status: "loading", message: "Starting Python WebAssembly runtime..." });
@@ -68,9 +71,6 @@ async function initPyodideRuntime(basePath = "../") {
     pyodide = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/"
     });
-
-    postMessage({ type: "STATUS", status: "loading", message: "Loading SymPy & NumPy math packages..." });
-    await pyodide.loadPackage(["sympy", "numpy"]);
 
     postMessage({ type: "STATUS", status: "loading", message: "Mounting OpenMath CAS engine..." });
 
@@ -153,17 +153,33 @@ import json
       info: sysInfo
     });
 
-    // Drain queued requests
-    while (pendingMessages.length > 0) {
-      const queued = pendingMessages.shift();
-      if (queued) {
-        if (queued.type === "PARSE_DOCUMENT") {
-          executeParseDocument(queued);
-        } else if (queued.type === "EVALUATE") {
-          executeEvaluate(queued);
-        }
+    // Drain queued document parsing requests immediately!
+    const remaining = [];
+    for (const msg of pendingMessages) {
+      if (msg.type === "PARSE_DOCUMENT") {
+        executeParseDocument(msg);
+      } else {
+        remaining.push(msg);
       }
     }
+    pendingMessages = remaining;
+
+    // Load SymPy & NumPy in background for math evaluations
+    pyodide.loadPackage(["sympy", "numpy"]).then(() => {
+      isMathReady = true;
+      postMessage({
+        type: "STATUS",
+        status: "ready",
+        message: "SymPy and NumPy math packages ready."
+      });
+      while (pendingEvaluations.length > 0) {
+        const queuedEval = pendingEvaluations.shift();
+        if (queuedEval) executeEvaluate(queuedEval);
+      }
+    }).catch(err => {
+      console.warn("Background SymPy load error:", err);
+    });
+
   } catch (err) {
     console.error("Error initializing Pyodide:", err);
     postMessage({
@@ -183,6 +199,7 @@ function executeEvaluate(data) {
 json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec_input))
 `);
     const parsed = JSON.parse(resultJson);
+    if (data.syncOnly) return;
     postMessage({
       type: "RESULT",
       id: data.id,
@@ -213,12 +230,12 @@ self.onmessage = async function (e) {
       break;
 
     case "EVALUATE":
-      if (!isInitialized) {
-        pendingMessages.push(data);
+      if (!isInitialized || !isMathReady) {
+        pendingEvaluations.push(data);
         postMessage({
           type: "STATUS",
           status: "loading",
-          message: "Evaluating expression (waiting for CAS engine)..."
+          message: "Evaluating expression (loading math packages)..."
         });
         return;
       }
