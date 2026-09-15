@@ -1094,10 +1094,10 @@ body.theme-dark .status-segment.mode-badge {
     box-shadow: none !important;
   }
   .cell-bracket-bar {
-    border-color: #cbd5e1 !important;
+    display: none !important;
   }
   .cell-prompt {
-    color: #7f1d1d !important;
+    display: none !important;
   }
   .cell-output-math {
     color: #0000aa !important;

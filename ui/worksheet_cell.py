@@ -11995,17 +11995,15 @@ class WorksheetCell(QFrame):
 
         self._error_box = None
 
-        # Input Row (Prompt '>' + Input Editor)
+        # Input Row (Input Editor without prompt)
         self.input_row = QWidget(self.content_container)
         input_row_layout = QHBoxLayout(self.input_row)
         input_row_layout.setContentsMargins(0, 0, 0, 0)
-        input_row_layout.setSpacing(4)
+        input_row_layout.setSpacing(0)
 
-        self.lbl_prompt = QLabel(">", self.input_row)
-        self.lbl_prompt.setFont(QFont("Consolas", 14, QFont.Weight.Bold))
-        self.lbl_prompt.setStyleSheet("color: #b22222; font-weight: bold;")
-        self.lbl_prompt.setFixedWidth(16)
-        self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.lbl_prompt = QLabel("", self.input_row)
+        self.lbl_prompt.setFixedWidth(0)
+        self.lbl_prompt.setVisible(False)
         input_row_layout.addWidget(self.lbl_prompt)
 
         self.input_edit = CellInputEdit(self.input_row, parent_cell=self)
@@ -12562,44 +12560,12 @@ class WorksheetCell(QFrame):
         factor = getattr(self, 'zoom_factor', 1.0)
         display_sz = max(4, round(sz * factor))
 
-        has_img = hasattr(self, 'input_edit') and hasattr(self.input_edit, 'embedded_images') and bool(self.input_edit.embedded_images)
-        is_text_or_img = (mode == self.MODE_TEXT) or has_img
-        if is_text_or_img:
-            if hasattr(self, 'lbl_prompt'):
-                self.lbl_prompt.setVisible(False)
-            if hasattr(self, 'bracket_bar'):
-                self.bracket_bar.setVisible(False)
-        elif getattr(self, 'is_worksheet_mode', False) and not getattr(self, 'is_section_header', False):
-            if hasattr(self, 'lbl_prompt'):
-                self.lbl_prompt.setVisible(True)
-            if hasattr(self, 'bracket_bar'):
-                self.bracket_bar.setVisible(False)
-
-        if mode == self.MODE_2D_MATH:
-            prompt_font = QFont(fam, display_sz, QFont.Weight.Bold)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(">")
-            self.lbl_prompt.setStyleSheet("color: #000000; font-weight: bold;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        elif mode == self.MODE_NONEXEC_MATH:
-            prompt_font = QFont(fam, display_sz)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(" ")
-            self.lbl_prompt.setStyleSheet("color: #475569; font-weight: normal;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        elif mode == self.MODE_1D_MATH:
-            c_fam = "Courier New" if "Courier" in fam or "Consolas" in fam else fam
-            prompt_font = QFont(c_fam, display_sz, QFont.Weight.Bold)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(">")
-            self.lbl_prompt.setStyleSheet("color: #b22222; font-weight: bold;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        else:  # Text mode
-            prompt_font = QFont(fam, display_sz)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(" ")
-            self.lbl_prompt.setStyleSheet("color: #475569; font-weight: normal;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
+        if hasattr(self, 'lbl_prompt'):
+            self.lbl_prompt.setVisible(False)
+            self.lbl_prompt.setFixedWidth(0)
+            self.lbl_prompt.setText("")
+        if hasattr(self, 'bracket_bar'):
+            self.bracket_bar.setVisible(False)
 
     def _apply_mode_styling(self):
         """Apply font and prompt styling."""

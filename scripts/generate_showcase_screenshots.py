@@ -51,6 +51,11 @@ def generate_screenshot_1_light():
     win.tab_widget.setTabText(1, "Calculus_Worksheet.mw")
     win.setWindowTitle("Calculus_Worksheet.mw - [Server 3] - OpenMath")
 
+    while ws.cells:
+        c = ws.cells.pop(0)
+        ws.cells_layout.removeWidget(c)
+        c.deleteLater()
+
     ws.insert_section_cell("1. Advanced Symbolic Calculus & Analysis", level=0)
 
     c1 = ws.add_cell("f(x) := sin(x) * exp(-x/3)")
@@ -65,16 +70,18 @@ def generate_screenshot_1_light():
     c4 = ws.add_cell("solve(x^3 - 6*x^2 + 11*x - 6 = 0, x)")
     c4.execute()
 
+    if ws.cells:
+        ws.active_cell = ws.cells[0]
+
+    win.show()
+    app.processEvents()
+
     if hasattr(ws, 'scroll_area'):
         ws.scroll_area.verticalScrollBar().setValue(0)
         ws.scroll_area.horizontalScrollBar().setValue(0)
 
     app.processEvents()
     time.sleep(0.3)
-    app.processEvents()
-
-    win.show()
-    app.processEvents()
 
     out_path = os.path.join(OUT_DIR, "openmath_desktop_light.png")
     win.grab().save(out_path)
@@ -97,6 +104,11 @@ def generate_screenshot_2_dark():
     ws.set_worksheet_mode(True)
     win.tab_widget.setTabText(1, "Data_and_Constants.mw")
     win.setWindowTitle("Data_and_Constants.mw - [Server 3] - OpenMath")
+
+    while ws.cells:
+        c = ws.cells.pop(0)
+        ws.cells_layout.removeWidget(c)
+        c.deleteLater()
 
     ws.insert_section_cell("Physical Constants & Matrix Analysis", level=0)
 
@@ -141,16 +153,18 @@ def generate_screenshot_2_dark():
     c3 = ws.add_cell("M^2")
     c3.execute()
 
+    if ws.cells:
+        ws.active_cell = ws.cells[0]
+
+    win.show()
+    app.processEvents()
+
     if hasattr(ws, 'scroll_area'):
         ws.scroll_area.verticalScrollBar().setValue(0)
         ws.scroll_area.horizontalScrollBar().setValue(0)
 
     app.processEvents()
     time.sleep(0.3)
-    app.processEvents()
-
-    win.show()
-    app.processEvents()
 
     out_path = os.path.join(OUT_DIR, "openmath_dark_tables.png")
     win.grab().save(out_path)
@@ -174,8 +188,13 @@ def generate_screenshot_3_sections():
     win.tab_widget.setTabText(1, "Physics_Course_Notes.mw")
     win.setWindowTitle("Physics_Course_Notes.mw - [Server 3] - OpenMath")
 
+    while ws.cells:
+        c = ws.cells.pop(0)
+        ws.cells_layout.removeWidget(c)
+        c.deleteLater()
+
     ws.insert_section_cell("1. Classical Mechanics", level=0)
-    ws.insert_section_cell("1.1 Kinematics & Trajectory", level=1)
+    ws.insert_section_cell("1.1 Kinematics", level=1)
     c1 = ws.add_cell("x(t) := x_0 + v_0*t + (1/2)*a*t^2")
     c1.execute()
     c2 = ws.add_cell("v(t) := diff(x(t), t)")
@@ -184,13 +203,21 @@ def generate_screenshot_3_sections():
     ws.insert_section_cell("1.2 Conservation of Energy", level=1)
     c3 = ws.add_cell("E_k := (1/2) * m * v(t)^2")
     c3.execute()
-    c4 = ws.add_cell("E_p := m * g * y(t)")
-    c4.execute()
 
     ws.insert_section_cell("2. Electromagnetism & Waves", level=0)
     ws.insert_section_cell("2.1 Maxwell Equations", level=1)
-    c5 = ws.add_cell("c := 1 / sqrt(mu_0 * epsilon_0)")
+    c5 = ws.add_cell("c := 1 / sqrt(mu_0 * varepsilon_0)")
     c5.execute()
+
+    ws.ensure_cell_visible = lambda *a, **k: None
+
+    if ws.cells:
+        ws.active_cell = ws.cells[0]
+
+    win.show()
+    app.processEvents()
+    time.sleep(0.1)
+    app.processEvents()
 
     if hasattr(ws, 'scroll_area'):
         ws.scroll_area.verticalScrollBar().setValue(0)
@@ -198,10 +225,6 @@ def generate_screenshot_3_sections():
 
     app.processEvents()
     time.sleep(0.3)
-    app.processEvents()
-
-    win.show()
-    app.processEvents()
 
     out_path = os.path.join(OUT_DIR, "openmath_sections_tree.png")
     win.grab().save(out_path)
@@ -214,7 +237,7 @@ def generate_screenshot_4_calculus():
     app = setup_app(Theme.LIGHT)
     win = MainWindow()
     win.set_theme(Theme.LIGHT, save=False)
-    win.resize(1400, 900)
+    win.resize(1520, 920)
     win.palette_dock.setVisible(True)
     win.context_dock.setVisible(False)  # Closed context panel to give full room to calculations
     win.plot_dock.setVisible(True)
@@ -225,6 +248,11 @@ def generate_screenshot_4_calculus():
     ws.set_worksheet_mode(True)
     win.tab_widget.setTabText(1, "Linear_Algebra_and_Calculus.mw")
     win.setWindowTitle("Linear_Algebra_and_Calculus.mw - [Server 3] - OpenMath")
+
+    while ws.cells:
+        c = ws.cells.pop(0)
+        ws.cells_layout.removeWidget(c)
+        c.deleteLater()
 
     ws.insert_section_cell("Orthogonal Matrices & Dynamic Plots", level=0)
 
@@ -237,25 +265,28 @@ def generate_screenshot_4_calculus():
     c3 = ws.add_cell("A := Matrix([[3, 1], [0, 2]])")
     c3.execute()
 
-    c4 = ws.add_cell("int(x^2 * exp(x), x)")
-    c4.execute()
-
     # Draw plot in plot dock
     win.plot_panel.expr_input.setText("sin(x) * exp(-x/5)")
     win.plot_panel.spin_min.setValue(0.0)
     win.plot_panel.spin_max.setValue(15.0)
     win.plot_panel.plot_current_expression()
 
+    ws.ensure_cell_visible = lambda *a, **k: None
+
+    if ws.cells:
+        ws.active_cell = ws.cells[0]
+
+    win.show()
+    app.processEvents()
+    time.sleep(0.1)
+    app.processEvents()
+
     if hasattr(ws, 'scroll_area'):
         ws.scroll_area.verticalScrollBar().setValue(0)
         ws.scroll_area.horizontalScrollBar().setValue(0)
 
     app.processEvents()
-    time.sleep(0.4)
-    app.processEvents()
-
-    win.show()
-    app.processEvents()
+    time.sleep(0.3)
 
     out_path = os.path.join(OUT_DIR, "openmath_desktop_calculus.png")
     win.grab().save(out_path)

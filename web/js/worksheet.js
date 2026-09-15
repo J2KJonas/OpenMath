@@ -227,9 +227,9 @@ export class WorksheetView {
       const hasImages = cell.embeddedImages && Object.keys(cell.embeddedImages).length > 0;
       const isText = cell.mode === "text" || isTable || hasImages;
       cellDiv.innerHTML = `
-        <div class="cell-bracket-bar" style="${isText ? 'visibility:hidden;' : ''}"></div>
+        <div class="cell-bracket-bar" style="display:none;"></div>
         <div class="cell-input-row">
-          <span class="cell-prompt" style="${isText ? 'display:none;' : ''}">[&gt; </span>
+          <span class="cell-prompt" style="display:none;"></span>
           <div class="cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}"
                contenteditable="${this.isEditable}"
                spellcheck="false"></div>
@@ -402,7 +402,7 @@ export class WorksheetView {
       editEl.className = `cell-input-edit mode-${mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}`;
     }
     if (bracketBar) bracketBar.style.display = "none";
-    if (promptEl) promptEl.style.display = isText ? "none" : "";
+    if (promptEl) promptEl.style.display = "none";
 
     const outputContainer = cell.domElement?.querySelector(".cell-output-container");
     if (isText && outputContainer) {

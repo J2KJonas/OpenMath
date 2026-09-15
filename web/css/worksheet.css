@@ -223,19 +223,9 @@ body.theme-dark .start-dev-btn:hover {
   min-height: 22px;
 }
 
+/* Cell Prompt `>` - Disabled: clean document presentation without command-line prompt */
 .cell-prompt {
-  font-family: "Times New Roman", Times, serif;
-  font-size: 14px;
-  font-style: italic;
-  font-weight: bold;
-  color: #cc0000;
-  user-select: none;
-  flex-shrink: 0;
-  line-height: 1.2;
-}
-
-body.theme-dark .cell-prompt {
-  color: #ef4444;
+  display: none !important;
 }
 
 .cell-input-edit {
