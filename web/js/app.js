@@ -1099,23 +1099,8 @@ class OpenMathApplication {
       }
     }
 
-    // 2. XML worksheet format (.mw / .mv)
+    // 2. XML worksheet format (.mw / .mv) - delegate to CAS engine WorksheetIO for 100% fidelity
     if (stripped.startsWith("<")) {
-      try {
-        const parser = new DOMParser();
-        let xmlDoc = parser.parseFromString(stripped, "text/xml");
-        if (xmlDoc.querySelector("parsererror")) {
-          // If XML entity errors occurred, sanitize and re-parse
-          const sanitized = stripped.replace(/&(?!amp;|lt;|gt;|apos;|quot;)/g, "&amp;");
-          xmlDoc = parser.parseFromString(sanitized, "text/xml");
-        }
-        if (!xmlDoc.querySelector("parsererror")) {
-          const cells = this.extractCellsFromXmlDoc(xmlDoc);
-          if (cells && cells.length > 0) return cells;
-        }
-      } catch (e) {
-        console.warn("JS XML parse error, deferring to CAS engine:", e);
-      }
       return null;
     }
 
@@ -1384,19 +1369,23 @@ class OpenMathApplication {
 
       const decoder = new TextDecoder("utf-8");
       const textContent = decoder.decode(buffer);
+      const stripped = textContent.trim();
 
-      // Fast JS-side parsing attempt for instant loading (<2ms)
-      try {
-        const jsParsed = this.parseDocumentInJS(textContent, file.name);
-        if (jsParsed && jsParsed.length > 0) {
-          this.openDocumentWithCells(jsParsed, file.name);
-          return;
+      // Fast JS-side parsing for JSON or plain text formats
+      if (stripped.startsWith("[") || stripped.startsWith("{") || (!stripped.startsWith("<") && !file.name.endsWith(".mw") && !file.name.endsWith(".mv"))) {
+        try {
+          const jsParsed = this.parseDocumentInJS(textContent, file.name);
+          if (jsParsed && jsParsed.length > 0) {
+            this.openDocumentWithCells(jsParsed, file.name);
+            return;
+          }
+        } catch (err) {
+          console.warn("Fast JS parse error:", err);
         }
-      } catch (err) {
-        console.warn("Fast JS parse error:", err);
       }
 
-      // If JS-side parsing needed Python CAS engine features, delegate to worker
+      // Delegate .mw, .mv, and XML files to the CAS engine with full WorksheetIO desktop fidelity
+      this.updateStatusMessage(`Parsing ${file.name} with OpenMath CAS engine...`);
       this.worker.postMessage({
         type: "PARSE_DOCUMENT",
         filename: file.name,

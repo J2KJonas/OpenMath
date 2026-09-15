@@ -106,7 +106,7 @@ export class WorksheetView {
     const mode = options.mode || "2d_math"; // "2d_math", "1d_math", "text", "section"
     const isSection = options.isSectionHeader || mode === "section";
     const sectionLevel = options.sectionLevel || 0;
-    const title = options.sectionTitle || "";
+    const title = cleanOctalEscapes(options.sectionTitle || "");
     const input = options.input || "";
     const insertAfterId = options.insertAfterId;
 
@@ -116,8 +116,10 @@ export class WorksheetView {
       isSectionHeader: isSection,
       sectionLevel,
       sectionTitle: title,
+      sectionHtml: options.sectionHtml || null,
       isCollapsed: bool(options.isCollapsed),
       input,
+      isTable: !!options.isTable,
       result: options.result || null,
       error: options.error || null,
       suggestion: options.suggestion || null,
@@ -154,14 +156,25 @@ export class WorksheetView {
 
   renderCellDom(cell, insertIntoDom = true) {
     const cellDiv = document.createElement("div");
-    cellDiv.className = `worksheet-cell ${cell.isSectionHeader ? 'section-header-cell level-' + cell.sectionLevel : ''}`;
+    const secLvl = Math.max(0, cell.sectionLevel || 0);
+    const isTable = cell.isTable || cell.mode === "table";
+    cellDiv.className = `worksheet-cell ${cell.isSectionHeader ? 'section-header-cell level-' + secLvl : ''} ${isTable ? 'table-cell' : ''}`;
     cellDiv.id = cell.id;
 
+    // Apply 26px indentation per section level matching desktop OpenMath
+    const step = 26;
+    const indent = secLvl * step;
+    if (indent > 0) {
+      cellDiv.style.marginLeft = `${indent}px`;
+    }
+
     if (cell.isSectionHeader) {
+      const cleanTitle = cleanOctalEscapes(cell.sectionTitle || cell.input || "");
+      const titleContent = cell.sectionHtml ? cleanOctalEscapes(cell.sectionHtml) : cleanTitle;
       cellDiv.innerHTML = `
         <div class="section-row">
           <button class="section-toggle-btn" title="Toggle Section Collapse">${cell.isCollapsed ? '▶' : '▼'}</button>
-          <div class="section-title-edit" contenteditable="${this.isEditable}" placeholder="Section Title...">${cell.sectionTitle || ''}</div>
+          <div class="section-title-edit" contenteditable="${this.isEditable}" placeholder="Section Title...">${titleContent}</div>
         </div>
       `;
 
@@ -171,17 +184,19 @@ export class WorksheetView {
         cell.isCollapsed = !cell.isCollapsed;
         toggleBtn.textContent = cell.isCollapsed ? '▶' : '▼';
         this.updateSectionFolding();
-        this.drawScopeOverlay();
       };
 
       const titleEdit = cellDiv.querySelector(".section-title-edit");
       titleEdit.oninput = () => {
         cell.sectionTitle = titleEdit.innerText;
+        cell.input = titleEdit.innerText;
+        this.app.contextPanel.setTargetExpression(cell.sectionTitle);
       };
       titleEdit.onfocus = () => this.setActiveCell(cell.id);
     } else {
-      // Regular execution group cell
-      const isText = cell.mode === "text";
+      // Regular execution group cell, table, or embedded image
+      const hasImages = cell.embeddedImages && Object.keys(cell.embeddedImages).length > 0;
+      const isText = cell.mode === "text" || isTable || hasImages;
       cellDiv.innerHTML = `
         <div class="cell-bracket-bar" style="${isText ? 'visibility:hidden;' : ''}"></div>
         <div class="cell-input-row">
@@ -196,7 +211,7 @@ export class WorksheetView {
       const inputEdit = cellDiv.querySelector(".cell-input-edit");
 
       if (isText) {
-        let textContent = cell.input || "";
+        let textContent = cleanOctalEscapes(cell.input || "");
         if (cell.embeddedImages) {
           for (const [imgId, b64] of Object.entries(cell.embeddedImages)) {
             const srcData = b64.startsWith("data:") ? b64 : `data:image/png;base64,${b64}`;
@@ -568,22 +583,31 @@ export class WorksheetView {
   }
 
   updateSectionFolding() {
-    let currentFoldLevel = -1;
-    let isFolding = false;
+    const collapsedStack = [];
 
     for (const cell of this.cells) {
+      const secLevel = Math.max(0, cell.sectionLevel || 0);
       if (cell.isSectionHeader) {
-        if (isFolding && cell.sectionLevel <= currentFoldLevel) {
-          isFolding = false;
+        // Pop any collapsed levels at or deeper than current section level
+        while (collapsedStack.length > 0 && collapsedStack[collapsedStack.length - 1] >= secLevel) {
+          collapsedStack.pop();
         }
-        if (cell.isCollapsed) {
-          isFolding = true;
-          currentFoldLevel = cell.sectionLevel;
-        }
-        if (cell.domElement) cell.domElement.style.display = "flex";
-      } else {
+        const isHidden = collapsedStack.length > 0;
         if (cell.domElement) {
-          cell.domElement.style.display = isFolding ? "none" : "flex";
+          cell.domElement.style.display = isHidden ? "none" : "flex";
+        }
+        // If this section is collapsed and not hidden itself, track its level
+        if (cell.isCollapsed && !isHidden) {
+          collapsedStack.push(secLevel);
+        }
+      } else {
+        // Content cell: hidden if inside any currently collapsed section
+        while (collapsedStack.length > 0 && collapsedStack[collapsedStack.length - 1] > secLevel) {
+          collapsedStack.pop();
+        }
+        const isHidden = collapsedStack.length > 0;
+        if (cell.domElement) {
+          cell.domElement.style.display = isHidden ? "none" : "flex";
         }
       }
     }
@@ -698,9 +722,11 @@ export class WorksheetView {
         mode,
         isSectionHeader: isSec,
         sectionLevel: c.section_level || 0,
-        sectionTitle: c.section_title || "",
+        sectionTitle: cleanOctalEscapes(c.section_title || (isSec ? c.input : "")),
+        sectionHtml: c.section_html || null,
         isCollapsed,
-        input: c.input || "",
+        input: cleanOctalEscapes(c.input || ""),
+        isTable: !!c.is_table,
         result: c.result || null,
         error: c.result?.error || null,
         equationIndex: eqIdx,
@@ -748,4 +774,23 @@ export class WorksheetView {
 
 function bool(v) {
   return v === true || v === "true" || v === 1;
+}
+
+export function cleanOctalEscapes(s) {
+  if (!s || typeof s !== "string" || !s.includes("\\")) return s || "";
+  return s.replace(/(?:\\[0-7]{3})+/g, (match) => {
+    try {
+      const octals = match.match(/\\([0-7]{3})/g);
+      if (!octals) return match;
+      const bytes = new Uint8Array(octals.map(o => parseInt(o.substring(1), 8)));
+      if (typeof TextDecoder !== "undefined") {
+        return new TextDecoder("utf-8").decode(bytes);
+      }
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      return decodeURIComponent(escape(binary));
+    } catch (e) {
+      return match;
+    }
+  });
 }
