@@ -38,21 +38,13 @@
   </div>
 
   <div id="app-window">
-    <!-- 0. Window Title Bar -->
-    <div class="window-titlebar">
-      <div class="titlebar-left">
-        <img src="./favicon.png" alt="AppIcon" class="app-window-icon" />
-        <span id="window-title-text" class="window-title-text">Start.mw - [Server 3] - OpenMath</span>
-      </div>
-      <div class="titlebar-controls">
-        <button class="win-btn" title="Minimize">—</button>
-        <button class="win-btn" title="Maximize">□</button>
-        <button class="win-btn win-close" title="Close">✕</button>
-      </div>
-    </div>
-
     <!-- 1. Native Desktop MenuBar -->
     <nav class="desktop-menubar">
+      <div style="display: flex; align-items: center; padding: 0 10px 0 8px; gap: 6px; user-select: none; border-right: 1px solid var(--border); margin-right: 4px;">
+        <img src="./favicon.png" alt="OpenMath" width="16" height="16" style="vertical-align: middle;" />
+        <span style="font-weight: 700; font-size: 12px; color: var(--text-primary); letter-spacing: -0.2px;">OpenMath</span>
+      </div>
+
       <!-- File Menu -->
       <div class="menu-item">
         <button class="menu-trigger">File</button>
