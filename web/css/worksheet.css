@@ -269,6 +269,15 @@ body.theme-dark .start-dev-btn:hover {
   font-style: normal;
 }
 
+.cell-input-edit img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 2px;
+  margin: 4px 0;
+}
+
 /* Output Area */
 .cell-output-box {
   display: flex;

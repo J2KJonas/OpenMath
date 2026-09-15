@@ -4,6 +4,9 @@ Serializes CASResult into JSON-compatible dictionaries.
 """
 import sys
 import os
+import io
+import zipfile
+import base64
 import traceback
 import json
 import uuid
@@ -162,13 +165,43 @@ def get_help_catalog() -> list:
     except Exception as e:
         return []
 
-def parse_worksheet_document(content: str) -> dict:
+def parse_worksheet_document(content: str, filename: str = None) -> dict:
     """
     Parse .mw, .mv, .json, or plain text worksheet file content.
+    Supports zip-packaged .mw archives (content.xml), native XML, JSON, and text.
     Returns dictionary with extracted calculation cells and formatting.
     """
     if not content or not content.strip():
         return {"cells": [], "error": "Document is empty"}
+
+    # Check if content is a base64 encoded zip archive or binary zip
+    if content.startswith("BASE64_ZIP:"):
+        try:
+            b64_str = content.split(":", 1)[1]
+            raw_bytes = base64.b64decode(b64_str)
+            if zipfile.is_zipfile(io.BytesIO(raw_bytes)):
+                with zipfile.ZipFile(io.BytesIO(raw_bytes), 'r') as zf:
+                    names = zf.namelist()
+                    target = next((n for n in ['content.xml', 'document.xml'] if n in names), None)
+                    if not target:
+                        target = next((n for n in names if n.endswith('.mw') or n.endswith('.xml')), None)
+                    if target:
+                        content = zf.read(target).decode('utf-8', errors='replace')
+        except Exception:
+            pass
+    elif content.startswith("PK\x03\x04"):
+        try:
+            raw_bytes = content.encode('latin1')
+            if zipfile.is_zipfile(io.BytesIO(raw_bytes)):
+                with zipfile.ZipFile(io.BytesIO(raw_bytes), 'r') as zf:
+                    names = zf.namelist()
+                    target = next((n for n in ['content.xml', 'document.xml'] if n in names), None)
+                    if not target:
+                        target = next((n for n in names if n.endswith('.mw') or n.endswith('.xml')), None)
+                    if target:
+                        content = zf.read(target).decode('utf-8', errors='replace')
+        except Exception:
+            pass
 
     stripped = content.strip()
 

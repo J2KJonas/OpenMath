@@ -68,15 +68,44 @@ export class PaletteManager {
       });
     }
 
-    // Formulas tab buttons
-    document.querySelectorAll(".formula-insert-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const formula = btn.dataset.formula;
+    // Formulas tab card clicks
+    document.querySelectorAll(".formula-card, .formula-insert-btn").forEach(card => {
+      card.addEventListener("click", () => {
+        const formula = card.dataset.formula;
         if (formula) {
           this.app.insertTemplateIntoActiveCell(formula);
         }
       });
     });
+
+    // Formulas tab real-time live search filter
+    const formulasSearchInput = document.getElementById("formulas-search-input");
+    if (formulasSearchInput) {
+      formulasSearchInput.addEventListener("input", () => {
+        const q = formulasSearchInput.value.trim().toLowerCase();
+        document.querySelectorAll(".formula-category-group").forEach(group => {
+          let hasVisible = false;
+          group.querySelectorAll(".formula-card").forEach(card => {
+            const title = (card.dataset.title || "").toLowerCase();
+            const formula = (card.dataset.formula || "").toLowerCase();
+            const desc = (card.dataset.desc || "").toLowerCase();
+            if (!q || title.includes(q) || formula.includes(q) || desc.includes(q)) {
+              card.style.display = "block";
+              hasVisible = true;
+            } else {
+              card.style.display = "none";
+            }
+          });
+          group.style.display = hasVisible ? "block" : "none";
+          if (q && hasVisible) {
+            const body = group.querySelector(".accordion-body");
+            const arrow = group.querySelector(".accordion-arrow");
+            if (body) body.classList.remove("collapsed");
+            if (arrow) arrow.textContent = "▼";
+          }
+        });
+      });
+    }
 
     // Clear variables button
     const clearVarsBtn = document.getElementById("btn-clear-variables");

@@ -116,12 +116,13 @@ export class WorksheetView {
       isSectionHeader: isSection,
       sectionLevel,
       sectionTitle: title,
-      isCollapsed: false,
+      isCollapsed: bool(options.isCollapsed),
       input,
       result: options.result || null,
       error: options.error || null,
       suggestion: options.suggestion || null,
-      equationIndex: null,
+      equationIndex: options.equationIndex || null,
+      embeddedImages: options.embeddedImages || null,
       domElement: null
     };
 
@@ -178,23 +179,42 @@ export class WorksheetView {
       titleEdit.onfocus = () => this.setActiveCell(cell.id);
     } else {
       // Regular execution group cell
+      const isText = cell.mode === "text";
       cellDiv.innerHTML = `
-        <div class="cell-bracket-bar"></div>
+        <div class="cell-bracket-bar" style="${isText ? 'visibility:hidden;' : ''}"></div>
         <div class="cell-input-row">
-          <span class="cell-prompt">[&gt; </span>
-          <div class="cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (cell.mode === 'text' ? 'text' : '2d')}"
+          <span class="cell-prompt" style="${isText ? 'display:none;' : ''}">[&gt; </span>
+          <div class="cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}"
                contenteditable="${this.isEditable}"
-               spellcheck="false">${cell.input || ''}</div>
+               spellcheck="false"></div>
         </div>
         <div class="cell-output-container"></div>
       `;
 
       const inputEdit = cellDiv.querySelector(".cell-input-edit");
 
+      if (isText) {
+        let textContent = cell.input || "";
+        if (cell.embeddedImages) {
+          for (const [imgId, b64] of Object.entries(cell.embeddedImages)) {
+            const srcData = b64.startsWith("data:") ? b64 : `data:image/png;base64,${b64}`;
+            textContent = textContent.split(`src="${imgId}"`).join(`src="${srcData}"`);
+            textContent = textContent.split(`src='${imgId}'`).join(`src="${srcData}"`);
+          }
+        }
+        if (/<(p|div|img|span|b|i|u|br|table|h[1-6])[\s>]/i.test(textContent)) {
+          inputEdit.innerHTML = textContent;
+        } else {
+          inputEdit.innerText = textContent;
+        }
+      } else {
+        inputEdit.innerText = cell.input || "";
+      }
+
       inputEdit.onfocus = () => this.setActiveCell(cell.id);
 
       inputEdit.oninput = () => {
-        cell.input = inputEdit.innerText;
+        cell.input = isText ? inputEdit.innerHTML : inputEdit.innerText;
         // In 2D Math mode, auto-convert _1 and ^2 to Unicode sub/superscript
         if (cell.mode === "2d_math") {
           const raw = inputEdit.innerText;
@@ -308,16 +328,8 @@ export class WorksheetView {
     if (!cell || cell.isSectionHeader) return;
 
     // Cycle 2d_math -> 1d_math -> text -> 2d_math
-    if (cell.mode === "2d_math") cell.mode = "1d_math";
-    else if (cell.mode === "1d_math") cell.mode = "text";
-    else cell.mode = "2d_math";
-
-    const editEl = cell.domElement?.querySelector(".cell-input-edit");
-    if (editEl) {
-      editEl.className = `cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (cell.mode === 'text' ? 'text' : '2d')}`;
-    }
-    this.app.updateContextBar(cell.mode);
-    this.app.updateStatusMode(cell.mode);
+    const nextMode = cell.mode === "2d_math" ? "1d_math" : (cell.mode === "1d_math" ? "text" : "2d_math");
+    this.setCellMode(cellId, nextMode);
   }
 
   setCellMode(cellId, mode) {
@@ -325,10 +337,17 @@ export class WorksheetView {
     if (!cell || cell.isSectionHeader) return;
 
     cell.mode = mode;
+    const isText = mode === "text";
     const editEl = cell.domElement?.querySelector(".cell-input-edit");
+    const bracketBar = cell.domElement?.querySelector(".cell-bracket-bar");
+    const promptEl = cell.domElement?.querySelector(".cell-prompt");
+
     if (editEl) {
-      editEl.className = `cell-input-edit mode-${mode === '1d_math' ? '1d' : (mode === 'text' ? 'text' : '2d')}`;
+      editEl.className = `cell-input-edit mode-${mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}`;
     }
+    if (bracketBar) bracketBar.style.visibility = isText ? "hidden" : "visible";
+    if (promptEl) promptEl.style.display = isText ? "none" : "";
+
     this.app.updateContextBar(cell.mode);
     this.app.updateStatusMode(cell.mode);
   }
@@ -643,16 +662,39 @@ export class WorksheetView {
     this.plotInstances.clear();
 
     for (const c of cellList) {
-      this.addCell({
-        mode: c.is_section_header ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : "2d_math")),
-        isSectionHeader: bool(c.is_section_header),
+      const isSec = bool(c.is_section_header);
+      const mode = isSec ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : (c.input_mode === 3 ? "nonexec_math" : "2d_math")));
+      const isCollapsed = bool(c.is_collapsed);
+      const hasResult = c.result && (c.result.exact_latex || c.result.numeric_latex || c.result.exact_text || c.result.numeric_text || c.result.is_plot || c.result.error);
+      const eqIdx = hasResult ? ++this.executionCounter : null;
+
+      const cellObj = this.addCell({
+        mode,
+        isSectionHeader: isSec,
         sectionLevel: c.section_level || 0,
         sectionTitle: c.section_title || "",
+        isCollapsed,
         input: c.input || "",
-        result: c.result || null
+        result: c.result || null,
+        error: c.result?.error || null,
+        equationIndex: eqIdx,
+        embeddedImages: c.embedded_images || null
       });
+
+      if (eqIdx && cellObj && cellObj.domElement) {
+        cellObj.equationIndex = eqIdx;
+        const eqLabel = cellObj.domElement.querySelector(".cell-equation-label");
+        if (eqLabel) eqLabel.textContent = `(${eqIdx})`;
+      }
     }
 
+    if (this.cells.length === 0) {
+      this.addCell();
+    } else {
+      this.setActiveCell(this.cells[0].id);
+    }
+
+    this.updateSectionFolding();
     this.drawScopeOverlay();
   }
 
@@ -665,7 +707,9 @@ export class WorksheetView {
       is_section_header: c.isSectionHeader,
       section_title: c.sectionTitle,
       section_level: c.sectionLevel,
-      result: c.result
+      is_collapsed: c.isCollapsed,
+      result: c.result,
+      embedded_images: c.embeddedImages || {}
     }));
   }
 }
