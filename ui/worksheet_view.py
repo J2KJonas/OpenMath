@@ -1308,14 +1308,8 @@ class WorksheetView(QWidget):
                     cell.section_level = 0
                     cell.is_inside_section = False
                 elif section_stack:
-                    while section_stack and section_stack[-1] > getattr(cell, 'section_level', 0):
-                        section_stack.pop()
-                    if section_stack:
-                        cell.section_level = section_stack[-1]
-                        cell.is_inside_section = True
-                    else:
-                        cell.section_level = 0
-                        cell.is_inside_section = False
+                    cell.section_level = section_stack[-1]
+                    cell.is_inside_section = True
                 else:
                     cell.section_level = 0
                     cell.is_inside_section = False

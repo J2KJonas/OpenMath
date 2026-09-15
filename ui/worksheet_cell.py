@@ -11003,43 +11003,16 @@ class CellOutputBox(QFrame):
 class CellBracketBar(QWidget):
     """
     Execution Group left bracket '[' widget.
-    Draws the classic vertical bracket line grouping input and output together.
+    (Disabled: Brackets are reserved exclusively for section and subsection hierarchies).
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(10)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def mousePressEvent(self, event):
-        parent_cell = self.parent()
-        while parent_cell and not hasattr(parent_cell, 'deleteRequested'):
-            parent_cell = parent_cell.parent()
-        if parent_cell and hasattr(parent_cell, '_get_worksheet_view'):
-            ws = parent_cell._get_worksheet_view()
-            if ws:
-                mods = event.modifiers()
-                if mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
-                    ws.select_cell(parent_cell, additive=True)
-                elif mods & Qt.KeyboardModifier.ShiftModifier:
-                    ws.select_cell(parent_cell, range_select=True)
-                else:
-                    ws.select_cell(parent_cell, additive=False)
-                event.accept()
-                return
-        super().mousePressEvent(event)
+        self.setFixedWidth(0)
+        self.setVisible(False)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        pen = QPen(QColor("#7c8798"), 1)
-        painter.setPen(pen)
-        w = self.width()
-        h = self.height()
-        # Draw bracket '[': top tick, vertical line, bottom tick
-        painter.drawLine(w - 2, 2, w - 8, 2)
-        painter.drawLine(w - 8, 2, w - 8, h - 3)
-        painter.drawLine(w - 8, h - 3, w - 2, h - 3)
+        pass
 
 
 class DraggableAxisLabel(mob.DraggableBase):
@@ -12022,17 +11995,15 @@ class WorksheetCell(QFrame):
 
         self._error_box = None
 
-        # Input Row (Prompt '>' + Input Editor)
+        # Input Row (Input Editor without prompt)
         self.input_row = QWidget(self.content_container)
         input_row_layout = QHBoxLayout(self.input_row)
         input_row_layout.setContentsMargins(0, 0, 0, 0)
-        input_row_layout.setSpacing(4)
+        input_row_layout.setSpacing(0)
 
-        self.lbl_prompt = QLabel(">", self.input_row)
-        self.lbl_prompt.setFont(QFont("Consolas", 14, QFont.Weight.Bold))
-        self.lbl_prompt.setStyleSheet("color: #b22222; font-weight: bold;")
-        self.lbl_prompt.setFixedWidth(16)
-        self.lbl_prompt.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.lbl_prompt = QLabel("", self.input_row)
+        self.lbl_prompt.setFixedWidth(0)
+        self.lbl_prompt.setVisible(False)
         input_row_layout.addWidget(self.lbl_prompt)
 
         self.input_edit = CellInputEdit(self.input_row, parent_cell=self)
@@ -12101,12 +12072,14 @@ class WorksheetCell(QFrame):
             self.output_row_layout.setContentsMargins(20, 4, 16, 4)
             self.output_row_layout.setSpacing(8)
 
-            self._math_renderer = MathRendererWidget("", font_size=15, theme_mode=Theme.LIGHT, parent=self._output_row)
+            cur_theme = getattr(self, 'theme_mode', Theme.LIGHT)
+            self._math_renderer = MathRendererWidget("", font_size=15, theme_mode=cur_theme, parent=self._output_row)
             self.output_row_layout.addWidget(self._math_renderer, 1)
 
             self._lbl_eq_label = QLabel(f"({self.execution_idx})", self._output_row)
             self._lbl_eq_label.setFont(QFont("Times New Roman", 13))
-            self._lbl_eq_label.setStyleSheet("color: #0000aa; font-weight: 500;")
+            eq_col = Theme.DARK_MATH_BLUE if cur_theme == Theme.DARK else Theme.OPENMATH_MATH_BLUE
+            self._lbl_eq_label.setStyleSheet(f"color: {eq_col}; font-weight: 500;")
             self._lbl_eq_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.output_row_layout.addWidget(self._lbl_eq_label, 0, Qt.AlignmentFlag.AlignRight)
 
@@ -12266,7 +12239,7 @@ class WorksheetCell(QFrame):
             is_text_or_img = (self.input_mode == self.MODE_TEXT) or has_img
             show_prompt = is_ws_mode and not is_text_or_img
             self.lbl_prompt.setVisible(show_prompt)
-            self.bracket_bar.setVisible(show_prompt)
+            self.bracket_bar.setVisible(False)
         else:
             self.lbl_prompt.setVisible(False)
             self.bracket_bar.setVisible(False)
@@ -12587,44 +12560,12 @@ class WorksheetCell(QFrame):
         factor = getattr(self, 'zoom_factor', 1.0)
         display_sz = max(4, round(sz * factor))
 
-        has_img = hasattr(self, 'input_edit') and hasattr(self.input_edit, 'embedded_images') and bool(self.input_edit.embedded_images)
-        is_text_or_img = (mode == self.MODE_TEXT) or has_img
-        if is_text_or_img:
-            if hasattr(self, 'lbl_prompt'):
-                self.lbl_prompt.setVisible(False)
-            if hasattr(self, 'bracket_bar'):
-                self.bracket_bar.setVisible(False)
-        elif getattr(self, 'is_worksheet_mode', False) and not getattr(self, 'is_section_header', False):
-            if hasattr(self, 'lbl_prompt'):
-                self.lbl_prompt.setVisible(True)
-            if hasattr(self, 'bracket_bar'):
-                self.bracket_bar.setVisible(True)
-
-        if mode == self.MODE_2D_MATH:
-            prompt_font = QFont(fam, display_sz, QFont.Weight.Bold)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(">")
-            self.lbl_prompt.setStyleSheet("color: #000000; font-weight: bold;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        elif mode == self.MODE_NONEXEC_MATH:
-            prompt_font = QFont(fam, display_sz)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(" ")
-            self.lbl_prompt.setStyleSheet("color: #475569; font-weight: normal;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        elif mode == self.MODE_1D_MATH:
-            c_fam = "Courier New" if "Courier" in fam or "Consolas" in fam else fam
-            prompt_font = QFont(c_fam, display_sz, QFont.Weight.Bold)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(">")
-            self.lbl_prompt.setStyleSheet("color: #b22222; font-weight: bold;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
-        else:  # Text mode
-            prompt_font = QFont(fam, display_sz)
-            self.lbl_prompt.setFont(prompt_font)
-            self.lbl_prompt.setText(" ")
-            self.lbl_prompt.setStyleSheet("color: #475569; font-weight: normal;")
-            self.lbl_prompt.setFixedWidth(max(14, self.lbl_prompt.fontMetrics().horizontalAdvance("> ") + 2))
+        if hasattr(self, 'lbl_prompt'):
+            self.lbl_prompt.setVisible(False)
+            self.lbl_prompt.setFixedWidth(0)
+            self.lbl_prompt.setText("")
+        if hasattr(self, 'bracket_bar'):
+            self.bracket_bar.setVisible(False)
 
     def _apply_mode_styling(self):
         """Apply font and prompt styling."""

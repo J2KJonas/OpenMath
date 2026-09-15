@@ -152,7 +152,8 @@ export class WorksheetView {
       suggestion: options.suggestion || null,
       equationIndex: options.equationIndex || null,
       embeddedImages: options.embeddedImages || null,
-      domElement: null
+      domElement: null,
+      _deferredOutput: !!options.deferredOutput
     };
 
     if (insertAfterId) {
@@ -166,7 +167,7 @@ export class WorksheetView {
       this.cells.push(cellObj);
     }
 
-    this.renderCellDom(cellObj, insertIntoDom);
+    this.renderCellDom(cellObj, insertIntoDom, options.initialHidden);
     if (insertIntoDom) {
       this.focusCell(id);
       this.drawScopeOverlay();
@@ -181,12 +182,15 @@ export class WorksheetView {
     }
   }
 
-  renderCellDom(cell, insertIntoDom = true) {
+  renderCellDom(cell, insertIntoDom = true, initialHidden = false) {
     const cellDiv = document.createElement("div");
     const secLvl = Math.max(0, cell.sectionLevel || 0);
     const isTable = cell.isTable || cell.mode === "table";
     cellDiv.className = `worksheet-cell ${cell.isSectionHeader ? 'section-header-cell level-' + secLvl : ''} ${isTable ? 'table-cell' : ''}`;
     cellDiv.id = cell.id;
+    if (initialHidden) {
+      cellDiv.style.display = "none";
+    }
 
     // Apply 26px indentation per section level matching desktop OpenMath
     const step = 26;
@@ -223,9 +227,9 @@ export class WorksheetView {
       const hasImages = cell.embeddedImages && Object.keys(cell.embeddedImages).length > 0;
       const isText = cell.mode === "text" || isTable || hasImages;
       cellDiv.innerHTML = `
-        <div class="cell-bracket-bar" style="${isText ? 'visibility:hidden;' : ''}"></div>
+        <div class="cell-bracket-bar" style="display:none;"></div>
         <div class="cell-input-row">
-          <span class="cell-prompt" style="${isText ? 'display:none;' : ''}">[&gt; </span>
+          <span class="cell-prompt" style="display:none;"></span>
           <div class="cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}"
                contenteditable="${this.isEditable}"
                spellcheck="false"></div>
@@ -237,8 +241,9 @@ export class WorksheetView {
 
       if (isText) {
         let textContent = cleanOctalEscapes(cell.input || "");
-        if (cell.embeddedImages) {
+        if (cell.embeddedImages && (textContent.includes('src="img_') || textContent.includes("src='img_"))) {
           for (const [imgId, b64] of Object.entries(cell.embeddedImages)) {
+            if (!textContent.includes(imgId)) continue;
             const srcData = b64.startsWith("data:") ? b64 : `data:image/png;base64,${b64}`;
             textContent = textContent.split(`src="${imgId}"`).join(`src="${srcData}"`);
             textContent = textContent.split(`src='${imgId}'`).join(`src="${srcData}"`);
@@ -256,7 +261,8 @@ export class WorksheetView {
       inputEdit.onfocus = () => this.setActiveCell(cell.id);
 
       inputEdit.oninput = () => {
-        cell.input = isText ? inputEdit.innerHTML : inputEdit.innerText;
+        const isCurrentText = cell.mode === "text" || cell.isTable || (cell.embeddedImages && Object.keys(cell.embeddedImages).length > 0);
+        cell.input = isCurrentText ? inputEdit.innerHTML : inputEdit.innerText;
         // In 2D Math mode, auto-convert _1 and ^2 to Unicode sub/superscript
         if (cell.mode === "2d_math") {
           const raw = inputEdit.innerText;
@@ -280,7 +286,12 @@ export class WorksheetView {
       };
 
       inputEdit.onkeydown = (e) => {
+        const isCurrentText = cell.mode === "text" || cell.isTable || cell.mode === "nonexec_math";
         if (e.key === "Enter" && !e.shiftKey) {
+          if (isCurrentText) {
+            // Text and non-executable math cells should NOT execute as math
+            return;
+          }
           e.preventDefault();
           this.executeCell(cell.id);
         } else if (e.key === "F5") {
@@ -323,7 +334,7 @@ export class WorksheetView {
       }
     }
 
-    if (cell.result || cell.error) {
+    if ((cell.result || cell.error) && !cell._deferredOutput) {
       this.renderCellOutput(cell);
     }
   }
@@ -390,8 +401,15 @@ export class WorksheetView {
     if (editEl) {
       editEl.className = `cell-input-edit mode-${mode === '1d_math' ? '1d' : (isText ? 'text' : '2d')}`;
     }
-    if (bracketBar) bracketBar.style.visibility = isText ? "hidden" : "visible";
-    if (promptEl) promptEl.style.display = isText ? "none" : "";
+    if (bracketBar) bracketBar.style.display = "none";
+    if (promptEl) promptEl.style.display = "none";
+
+    const outputContainer = cell.domElement?.querySelector(".cell-output-container");
+    if (isText && outputContainer) {
+      outputContainer.innerHTML = "";
+      cell.result = null;
+      cell.error = null;
+    }
 
     this.app.updateContextBar(cell.mode);
     this.app.updateStatusMode(cell.mode);
@@ -399,7 +417,7 @@ export class WorksheetView {
 
   executeCell(cellId) {
     const cell = this.cells.find(c => c.id === cellId);
-    if (!cell || cell.isSectionHeader) return;
+    if (!cell || cell.isSectionHeader || cell.mode === "text" || cell.mode === "nonexec_math") return;
 
     const input = (cell.input || "").trim();
     if (!input) {
@@ -657,6 +675,11 @@ export class WorksheetView {
         cell.domElement.style.display = isHidden ? "none" : "flex";
       }
 
+      if (!isHidden && cell._deferredOutput) {
+        cell._deferredOutput = false;
+        this.renderCellOutput(cell);
+      }
+
       if (isSec) {
         const toggleBtn = cell.domElement?.querySelector(".section-toggle-btn");
         if (toggleBtn) {
@@ -834,15 +857,49 @@ export class WorksheetView {
     this.executionCounter = 0;
     this.plotInstances.clear();
 
+    const loadToken = ++this._currentLoadToken || (this._currentLoadToken = 1);
     const totalCells = cellList.length;
     if (progressCallback) {
       progressCallback(0, totalCells, `Loading 0 of ${totalCells} elements...`);
     }
 
-    const batchSize = 100;
+    // Fast visibility pre-pass (~0.5ms for 2000 cells)
+    // Determines upfront which cells will start inside collapsed sections so we can
+    // defer expensive DOM work and KaTeX rendering until sections are opened.
+    const collapsedDepthStack = [];
+    const isHiddenList = new Uint8Array(totalCells);
+    for (let i = 0; i < totalCells; i++) {
+      const c = cellList[i];
+      const isSec = bool(c.is_section_header);
+      const secLevel = Math.max(0, c.section_level || 0);
+
+      if (isSec) {
+        while (collapsedDepthStack.length > 0 && collapsedDepthStack[collapsedDepthStack.length - 1] >= secLevel) {
+          collapsedDepthStack.pop();
+        }
+      } else if (c._isOutsideSection) {
+        collapsedDepthStack.length = 0;
+      } else {
+        while (collapsedDepthStack.length > 0 && collapsedDepthStack[collapsedDepthStack.length - 1] > secLevel) {
+          collapsedDepthStack.pop();
+        }
+      }
+
+      if (collapsedDepthStack.length > 0) {
+        isHiddenList[i] = 1;
+      }
+
+      if (isSec && bool(c.is_collapsed)) {
+        collapsedDepthStack.push(secLevel);
+      }
+    }
+
+    const batchSize = 400;
     let idx = 0;
 
     const processNextBatch = () => {
+      if (this._currentLoadToken !== loadToken) return;
+
       const end = Math.min(idx + batchSize, totalCells);
       const batchFragment = document.createDocumentFragment();
       for (; idx < end; idx++) {
@@ -852,6 +909,7 @@ export class WorksheetView {
         const isCollapsed = bool(c.is_collapsed);
         const hasResult = c.result && (c.result.exact_latex || c.result.numeric_latex || c.result.exact_text || c.result.numeric_text || c.result.is_plot || c.result.error);
         const eqIdx = hasResult ? ++this.executionCounter : null;
+        const isHidden = isHiddenList[idx] === 1;
 
         const cellObj = this.addCell({
           mode,
@@ -865,7 +923,9 @@ export class WorksheetView {
           result: c.result || null,
           error: c.result?.error || null,
           equationIndex: eqIdx,
-          embeddedImages: c.embedded_images || c.embeddedImages || null
+          embeddedImages: c.embedded_images || c.embeddedImages || null,
+          deferredOutput: isHidden,
+          initialHidden: isHidden
         }, false);
 
         if (eqIdx && cellObj && cellObj.domElement) {
@@ -886,10 +946,9 @@ export class WorksheetView {
       }
 
       if (idx < totalCells) {
-        setTimeout(processNextBatch, 0);
+        requestAnimationFrame(processNextBatch);
       } else {
         // Complete all batches
-
         if (this.cells.length === 0) {
           this.addCell();
         } else {
@@ -898,9 +957,6 @@ export class WorksheetView {
 
         // Initialize section folding from imported state
         this.initSectionFolding();
-
-        // Attach interactive resizers & drag handles to all tables and images
-        this.initInteractiveResizers();
 
         requestAnimationFrame(() => {
           this.drawScopeOverlay();
@@ -918,21 +974,33 @@ export class WorksheetView {
     if (!this.cellsContainer) return;
     for (const cell of this.cells) {
       if (cell.domElement) {
-        this.setupCellInteractiveElements(cell.domElement, cell);
+        this._attachCellInteractions(cell.domElement, cell);
       }
     }
   }
 
   setupCellInteractiveElements(cellDiv, cell) {
-    if (!cellDiv) return;
+    if (!cellDiv || cellDiv._hasResizerSetup) return;
+    cellDiv._hasResizerSetup = true;
 
-    // 1. Interactive Images
+    // Lazily attach interactive elements on hover or focus to keep initial document load blazing fast
+    const onInteract = () => {
+      cellDiv.removeEventListener("mouseenter", onInteract);
+      cellDiv.removeEventListener("focusin", onInteract);
+      this._attachCellInteractions(cellDiv, cell);
+    };
+
+    cellDiv.addEventListener("mouseenter", onInteract, { passive: true, once: true });
+    cellDiv.addEventListener("focusin", onInteract, { passive: true, once: true });
+  }
+
+  _attachCellInteractions(cellDiv, cell) {
+    if (!cellDiv) return;
     const imgs = cellDiv.querySelectorAll("img");
     imgs.forEach(img => {
       this.attachImageInteractions(img, cell);
     });
 
-    // 2. Interactive Tables
     const tbls = cellDiv.querySelectorAll("table");
     tbls.forEach(tbl => {
       this.attachTableInteractions(tbl, cell);
