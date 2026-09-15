@@ -183,6 +183,8 @@ body.theme-dark .start-dev-btn:hover {
   position: absolute;
   top: 0;
   left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -410,6 +412,43 @@ body.theme-dark .section-toggle-btn {
 
 .worksheet-cell table {
   max-width: 100%;
+  border-collapse: collapse;
+  background-color: var(--bg-cell);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.worksheet-cell table td,
+.worksheet-cell table th {
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+/* Instant dark mode table styling with zero lag */
+body.theme-dark .worksheet-cell table {
+  background-color: var(--bg-cell) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+body.theme-dark .worksheet-cell table td,
+body.theme-dark .worksheet-cell table th {
+  background-color: var(--bg-cell) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+body.theme-dark .worksheet-cell table td *,
+body.theme-dark .worksheet-cell table th * {
+  color: inherit;
+}
+
+body.theme-dark .worksheet-cell table td [style*="color: #000088"],
+body.theme-dark .worksheet-cell table td [style*="color:#000088"],
+body.theme-dark .worksheet-cell table td [style*="color: #0000bb"],
+body.theme-dark .worksheet-cell table td [style*="color:#0000bb"],
+body.theme-dark .worksheet-cell table td [style*="color: blue"] {
+  color: #93c5fd !important;
 }
 
 /* Plot Container inside Cell */

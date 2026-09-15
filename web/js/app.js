@@ -476,6 +476,9 @@ class OpenMathApplication {
       case "matrix_wizard":
         this.dialogManager.openDialog("dialog-matrix-wizard");
         break;
+      case "insert_table":
+        this.triggerTableInsertDialog();
+        break;
       case "insert_image":
         this.triggerImageInsertDialog();
         break;
@@ -1506,6 +1509,19 @@ class OpenMathApplication {
       }
     };
     imgInput.click();
+  }
+
+  triggerTableInsertDialog() {
+    const ws = this.getActiveWorksheet();
+    if (!ws) return;
+    this.dialogManager.showPrompt("Enter table dimensions (Rows x Columns, e.g. 2x3):", "2x3", (val) => {
+      if (!val || !val.trim()) return;
+      let [rows, cols] = val.toLowerCase().split(/x|,|\s+/).filter(Boolean).map(n => parseInt(n.trim(), 10));
+      rows = isNaN(rows) || rows < 1 ? 2 : Math.min(50, rows);
+      cols = isNaN(cols) || cols < 1 ? 3 : Math.min(20, cols);
+      ws.insertTable(rows, cols);
+      this.updateStatusMessage(`Inserted ${rows}x${cols} table.`);
+    });
   }
 
   initDragAndDrop() {

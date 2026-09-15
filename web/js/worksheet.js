@@ -98,7 +98,19 @@ export class WorksheetView {
       this.addCell();
     });
 
+    const scrollContainer = this.container.querySelector(".worksheet-scroll-container");
+    if (scrollContainer) {
+      scrollContainer.addEventListener("scroll", () => this.drawScopeOverlay(), { passive: true });
+    }
+
     window.addEventListener("resize", () => this.drawScopeOverlay());
+
+    if (typeof ResizeObserver !== "undefined" && this.cellsContainer) {
+      this._resizeObserver = new ResizeObserver(() => {
+        this.drawScopeOverlay();
+      });
+      this._resizeObserver.observe(this.cellsContainer);
+    }
 
     document.addEventListener("click", (e) => {
       if (!e.target.closest(".image-resize-wrapper")) {
@@ -113,10 +125,17 @@ export class WorksheetView {
     const id = "cell_" + Math.random().toString(36).substring(2, 9);
     const mode = options.mode || "2d_math"; // "2d_math", "1d_math", "text", "section"
     const isSection = options.isSectionHeader || mode === "section";
-    const sectionLevel = options.sectionLevel || 0;
+    const insertAfterId = options.insertAfterId;
+
+    let sectionLevel = options.sectionLevel !== undefined ? options.sectionLevel : 0;
+    if (options.sectionLevel === undefined && insertAfterId) {
+      const prevCell = this.cells.find(c => c.id === insertAfterId);
+      if (prevCell) {
+        sectionLevel = prevCell.sectionLevel || 0;
+      }
+    }
     const title = cleanOctalEscapes(options.sectionTitle || "");
     const input = options.input || "";
-    const insertAfterId = options.insertAfterId;
 
     const cellObj = {
       id,
@@ -638,8 +657,14 @@ export class WorksheetView {
         cell.domElement.style.display = isHidden ? "none" : "flex";
       }
 
-      if (isSec && cell.isCollapsed) {
-        collapsedDepthStack.push(secLevel);
+      if (isSec) {
+        const toggleBtn = cell.domElement?.querySelector(".section-toggle-btn");
+        if (toggleBtn) {
+          toggleBtn.textContent = cell.isCollapsed ? '▶' : '▼';
+        }
+        if (cell.isCollapsed) {
+          collapsedDepthStack.push(secLevel);
+        }
       }
     }
   }
@@ -649,62 +674,11 @@ export class WorksheetView {
   }
 
   onSectionToggled(sectionCellId) {
-    const idx = this.cells.findIndex(c => c.id === sectionCellId);
-    if (idx === -1 || idx >= this.cells.length) return;
+    const secCell = this.cells.find(c => c.id === sectionCellId);
+    if (!secCell) return;
 
-    const secCell = this.cells[idx];
     secCell.isCollapsed = !secCell.isCollapsed;
-
-    const toggleBtn = secCell.domElement?.querySelector(".section-toggle-btn");
-    if (toggleBtn) {
-      toggleBtn.textContent = secCell.isCollapsed ? '▶' : '▼';
-    }
-
-    const parentLevel = secCell.sectionLevel || 0;
-    const isCollapsed = secCell.isCollapsed;
-    let collapsedSublevel = null;
-
-    for (let i = idx + 1; i < this.cells.length; i++) {
-      const c = this.cells[i];
-      const cLevel = c.sectionLevel || 0;
-
-      if (c.isSectionHeader) {
-        if (cLevel <= parentLevel) {
-          // Exited current section hierarchy
-          break;
-        }
-        if (isCollapsed) {
-          if (c.domElement) c.domElement.style.display = "none";
-        } else {
-          if (collapsedSublevel !== null && cLevel > collapsedSublevel) {
-            if (c.domElement) c.domElement.style.display = "none";
-          } else {
-            if (c.domElement) c.domElement.style.display = "flex";
-            if (c.isCollapsed) {
-              collapsedSublevel = cLevel;
-            } else {
-              collapsedSublevel = null;
-            }
-          }
-        }
-        continue;
-      }
-
-      if (c._isOutsideSection || cLevel < parentLevel) {
-        break;
-      }
-
-      if (isCollapsed) {
-        if (c.domElement) c.domElement.style.display = "none";
-      } else {
-        if (collapsedSublevel !== null) {
-          if (c.domElement) c.domElement.style.display = "none";
-        } else {
-          if (c.domElement) c.domElement.style.display = "flex";
-        }
-      }
-    }
-
+    this.initSectionFolding();
     this.drawScopeOverlay();
   }
 
@@ -734,70 +708,46 @@ export class WorksheetView {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
 
-    const isLight = this.app.theme === "light";
+    const isLight = this.app.theme !== "dark";
     ctx.strokeStyle = isLight ? "#8e9aaf" : "#64748b";
     ctx.lineWidth = 1;
     ctx.lineCap = "square";
 
-    // Stack to track active open sections in a single O(N) linear pass
-    const openSections = [];
-
     for (let i = 0; i < this.cells.length; i++) {
       const cell = this.cells[i];
-      if (!cell.domElement || cell.domElement.style.display === "none") continue;
+      if (!cell.isSectionHeader || cell.isCollapsed || !cell.domElement || cell.domElement.style.display === "none") {
+        continue;
+      }
+      const btn = cell.domElement.querySelector(".section-toggle-btn");
+      if (!btn) continue;
 
+      const btnRect = btn.getBoundingClientRect();
+      const startX = Math.floor(btnRect.left - canvasRect.left + btnRect.width / 2) + 0.5;
+      const startY = Math.floor(btnRect.bottom - canvasRect.top - 2);
       const secLevel = cell.sectionLevel || 0;
 
-      if (cell.isSectionHeader) {
-        while (openSections.length > 0 && openSections[openSections.length - 1].cell.sectionLevel >= secLevel) {
-          const finished = openSections.pop();
-          if (finished.lastCell && finished.lastCell.domElement) {
-            const lastRect = finished.lastCell.domElement.getBoundingClientRect();
-            const endY = Math.floor(lastRect.bottom - canvasRect.top - 4);
-            if (endY > finished.startY + 4) {
-              ctx.beginPath();
-              ctx.moveTo(finished.startX, finished.startY);
-              ctx.lineTo(finished.startX, endY);
-              ctx.lineTo(finished.startX + 8, endY);
-              ctx.stroke();
-            }
-          }
-        }
+      let lastCell = null;
+      for (let j = i + 1; j < this.cells.length; j++) {
+        const child = this.cells[j];
+        if (!child.domElement || child.domElement.style.display === "none" || child.domElement.offsetHeight === 0) continue;
 
-        if (!cell.isCollapsed) {
-          const btn = cell.domElement.querySelector(".section-toggle-btn");
-          if (btn) {
-            const btnRect = btn.getBoundingClientRect();
-            const startX = Math.floor(btnRect.left - canvasRect.left + btnRect.width / 2) + 0.5;
-            const startY = Math.floor(btnRect.bottom - canvasRect.top - 2);
-            openSections.push({
-              cell,
-              startX,
-              startY,
-              lastCell: null
-            });
-          }
+        const childLevel = child.sectionLevel || 0;
+        if (child.isSectionHeader) {
+          if (childLevel <= secLevel) break;
+        } else {
+          if (child._isOutsideSection || childLevel < secLevel) break;
         }
-      } else {
-        for (let s = 0; s < openSections.length; s++) {
-          if (!cell._isOutsideSection && cell.sectionLevel >= openSections[s].cell.sectionLevel) {
-            openSections[s].lastCell = cell;
-          }
-        }
+        lastCell = child;
       }
-    }
 
-    // Flush remaining open sections
-    while (openSections.length > 0) {
-      const finished = openSections.pop();
-      if (finished.lastCell && finished.lastCell.domElement) {
-        const lastRect = finished.lastCell.domElement.getBoundingClientRect();
-        const endY = Math.floor(lastRect.bottom - canvasRect.top - 4);
-        if (endY > finished.startY + 4) {
+      if (lastCell && lastCell.domElement) {
+        const lastRect = lastCell.domElement.getBoundingClientRect();
+        const endY = Math.floor(lastRect.bottom - canvasRect.top - 4) + 0.5;
+        if (endY > startY + 4) {
           ctx.beginPath();
-          ctx.moveTo(finished.startX, finished.startY);
-          ctx.lineTo(finished.startX, endY);
-          ctx.lineTo(finished.startX + 8, endY);
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(startX, endY);
+          ctx.lineTo(startX + 8, endY);
           ctx.stroke();
         }
       }
@@ -813,6 +763,45 @@ export class WorksheetView {
       sectionTitle: level === 0 ? "Problem / Section" : "Subproblem",
       insertAfterId: activeId
     });
+  }
+
+  insertTable(rows = 2, cols = 3) {
+    const r = Math.max(1, Math.min(50, rows));
+    const c = Math.max(1, Math.min(20, cols));
+
+    const htmlRows = [];
+    for (let i = 0; i < r; i++) {
+      const htmlCols = [];
+      for (let j = 0; j < c; j++) {
+        htmlCols.push(`<td style="border: 1px solid var(--border); padding: 8px 12px; vertical-align: middle; background-color: var(--bg-cell); min-width: 60px;"><br/></td>`);
+      }
+      htmlRows.push(`<tr>${htmlCols.join("")}</tr>`);
+    }
+
+    const tableHtml = `<div class="table-interactive-wrapper"><table style="border-collapse: collapse; width: 100%; border: 1px solid var(--border); font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.3;"><tbody>${htmlRows.join("")}</tbody></table></div>`;
+
+    const activeCell = this.cells.find(cell => cell.id === this.activeCellId);
+    if (activeCell && activeCell.domElement) {
+      const editEl = activeCell.domElement.querySelector(".cell-input-edit");
+      if (editEl && activeCell.mode === "text") {
+        editEl.focus();
+        document.execCommand("insertHTML", false, tableHtml);
+        activeCell.input = editEl.innerHTML;
+        this.initInteractiveResizers();
+        this.drawScopeOverlay();
+        return;
+      }
+    }
+
+    const newCell = this.addCell({
+      mode: "text",
+      isTable: true,
+      input: tableHtml,
+      insertAfterId: this.activeCellId
+    });
+    this.initInteractiveResizers();
+    this.drawScopeOverlay();
+    return newCell;
   }
 
   indentActiveCell() {

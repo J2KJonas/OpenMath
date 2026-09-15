@@ -709,11 +709,14 @@ export async function parseMwDocument(inputData, filename = "document.mw", progr
         const padVal = parseInt(cell.getAttribute("padding") || "5", 10);
         const padStr = isNaN(padVal) ? "6px 10px" : `${padVal}px ${padVal + 4}px`;
 
-        let bgCol = "#ffffff";
+        let bgCol = "transparent";
         if (fill) {
           const mRgb = fill.match(/\[(\d+),\s*(\d+),\s*(\d+)\]/);
           if (mRgb) {
-            bgCol = `rgb(${mRgb[1]},${mRgb[2]},${mRgb[3]})`;
+            const [r, g, b] = [parseInt(mRgb[1], 10), parseInt(mRgb[2], 10), parseInt(mRgb[3], 10)];
+            if (r < 250 || g < 250 || b < 250) {
+              bgCol = `rgb(${r},${g},${b})`;
+            }
           }
         }
 

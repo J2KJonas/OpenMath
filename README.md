@@ -14,11 +14,35 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 
 ---
 
+## 📸 Application Showcase
+
+<div align="center">
+  <img src="resources/screenshots/openmath_desktop_light.png" alt="OpenMath Academic Light Theme" width="48%" />
+  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Dark Mode Tables" width="48%" />
+</div>
+
+<div align="center" style="margin-top: 10px;">
+  <img src="resources/screenshots/openmath_sections_tree.png" alt="OpenMath Hierarchical Sections" width="48%" />
+  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Typeset Calculus" width="48%" />
+</div>
+
+---
+
+> [!IMPORTANT]
+> **⚡ Platform Recommendation: Native Desktop vs. WebApp**:
+> OpenMath offers both a native desktop application and a browser-based WebApp. However, **the WebApp is NOT as optimized as the native desktop application**. WebAssembly environments are subject to browser sandbox constraints, single-thread overhead, and higher memory latency. 
+> 
+> **For the best performance, instant calculation response, native multithreading, hardware access, and optimal handling of large worksheets and complex documents, use the native desktop application.**
+
+---
+
 ## Key Features
 
 ### 1. Interactive Worksheet / Document Layout
 - **Stacked Execution Blocks (Cells)**: Chronologically ordered `[In n]` and `[Out n]` calculation cells.
 - **High-DPI Typeset LaTeX**: Beautifully rendered mathematical formulas via Matplotlib's MathText engine with retina scaling.
+- **Interactive Tables**: Insert and format $M \times N$ custom data tables (`Insert -> Table...`) with full drag/resize handles and automatic light/dark theme adaptation.
+- **Hierarchical Section Folding**: Organize complex worksheets with multi-level section trees, collapsible chevrons (`▼` / `▶`), and continuous visual scope brackets (`└───`).
 - **Exact vs. Numeric Evaluation Switch**: Instantly toggle between exact symbolic representations (e.g. $\sqrt{2}$, $\frac{\pi}{4}$) and arbitrary-precision floating point approximations (e.g. $1.41421356$, $0.785398$).
 - **Per-Cell Precision Control**: Configurable digit precision from 2 to 50 decimal digits.
 - **One-Click Exports**: Copy LaTeX formula to clipboard, copy plain text or Python code.
@@ -203,7 +227,8 @@ calculator/
 ├── resources/                  # Application icons & visual assets
 │   ├── AppIcon.icns            # macOS multi-resolution icon
 │   ├── AppIcon.ico             # Windows multi-resolution icon
-│   └── AppIcon.png             # Linux / Qt high-resolution icon (1024x1024)
+│   ├── AppIcon.png             # Linux / Qt high-resolution icon (1024x1024)
+│   └── screenshots/            # Showcase screenshots of application UI
 ├── cas_engine/                 # Symbolic math & evaluation engine core
 │   ├── __init__.py
 │   ├── engine.py               # Stateful evaluation engine & variable scope
