@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="OpenMath - Desktop Symbolic & Numerical Computer Algebra System" />
+  <title>Start.mw - [Server 3] - OpenMath</title>
+
+  <link rel="icon" type="image/png" href="./favicon.png" />
+  <link rel="manifest" href="./manifest.json" />
+
+  <!-- KaTeX for high-DPI mathematical typesetting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+  <!-- Application Stylesheets -->
+  <link rel="stylesheet" href="./css/theme.css" />
+  <link rel="stylesheet" href="./css/desktop.css" />
+  <link rel="stylesheet" href="./css/worksheet.css" />
+  <link rel="stylesheet" href="./css/dialogs.css" />
+</head>
+<body class="theme-light">
+  <!-- Hidden Persistent File and Image Inputs -->
+  <input type="file" id="app-file-input" style="display: none;" accept=".mw,.mv,.json,.txt,.zip" />
+  <input type="file" id="app-image-input" style="display: none;" accept="image/*" />
+
+  <!-- Desktop-Fidelity Loading Overlay (Matches ui/loading_overlay.py) -->
+  <div id="loading-overlay" class="modal-backdrop" style="display: none; background-color: rgba(248, 250, 252, 0.85); backdrop-filter: blur(4px); z-index: 9999;">
+    <div id="loadingCard" style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18); padding: 22px 26px; max-width: 420px; width: 90%;">
+      <!-- Header with Icon and Title -->
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+        <span style="font-size: 18px; line-height: 1;">📂</span>
+        <span id="loading-title" style="font-size: 14px; font-weight: 700; color: #0f172a;">Opening Project...</span>
+      </div>
+      <!-- Document Name -->
+      <div id="loading-filename" style="font-size: 12px; font-weight: 600; color: #2563eb; word-break: break-all; margin-bottom: 12px; min-height: 16px;"></div>
+      <!-- Progress Bar (height 8px, rounded 4px) -->
+      <div style="width: 100%; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 10px; position: relative;">
+        <div id="loading-progress-bar" style="height: 100%; width: 0%; background-color: #2563eb; border-radius: 4px; transition: width 0.15s ease;"></div>
+      </div>
+      <!-- Status Text -->
+      <div id="loading-status" style="font-size: 12px; color: #64748b; word-break: break-word;">Reading worksheet archive...</div>
+    </div>
+  </div>
+
+  <div id="app-window">
+    <!-- 1. Native Desktop MenuBar -->
+    <nav class="desktop-menubar">
+      <div style="display: flex; align-items: center; padding: 0 10px 0 8px; gap: 6px; user-select: none; border-right: 1px solid var(--border); margin-right: 4px;">
+        <img src="./favicon.png" alt="OpenMath" width="16" height="16" style="vertical-align: middle;" />
+        <span style="font-weight: 700; font-size: 12px; color: var(--text-primary); letter-spacing: -0.2px;">OpenMath</span>
+      </div>
+
+      <!-- File Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">File</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="new"><span>New Worksheet</span><span class="shortcut">Ctrl+N</span></button>
+          <button class="menu-action" data-action="open"><span>Open...</span><span class="shortcut">Ctrl+O</span></button>
+          <button class="menu-action" data-action="save"><span>Save</span><span class="shortcut">Ctrl+S</span></button>
+          <button class="menu-action" data-action="save_as"><span>Save As...</span><span class="shortcut">Ctrl+Shift+S</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="export_pdf"><span>Export as PDF (.pdf)...</span></button>
+          <button class="menu-action" data-action="export_tex"><span>Export to LaTeX (.tex)...</span></button>
+          <button class="menu-action" data-action="export_md"><span>Export to Markdown (.md)...</span></button>
+          <button class="menu-action" data-action="export_json"><span>Export to JSON (.json)...</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="close_tab"><span>Close Tab</span><span class="shortcut">Ctrl+W</span></button>
+        </div>
+      </div>
+
+      <!-- Edit Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Edit</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="undo"><span>Undo</span><span class="shortcut">Ctrl+Z</span></button>
+          <button class="menu-action" data-action="redo"><span>Redo</span><span class="shortcut">Ctrl+Y</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="cut"><span>Cut</span><span class="shortcut">Ctrl+X</span></button>
+          <button class="menu-action" data-action="copy"><span>Copy</span><span class="shortcut">Ctrl+C</span></button>
+          <button class="menu-action" data-action="paste"><span>Paste</span><span class="shortcut">Ctrl+V</span></button>
+          <button class="menu-action" data-action="delete"><span>Delete</span><span class="shortcut">Del</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="select_all"><span>Select All</span><span class="shortcut">Ctrl+A</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="clear_worksheet"><span>Restart & Clear Worksheet</span></button>
+        </div>
+      </div>
+
+      <!-- View Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">View</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="toggle_palettes"><span id="chk-menu-palettes" class="checkmark">✓</span><span>Palettes Dock</span></button>
+          <button class="menu-action" data-action="toggle_context"><span id="chk-menu-context" class="checkmark"></span><span>Context Panel</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-action has-submenu">
+            <span>Zoom</span><span class="submenu-chevron">▶</span>
+            <div class="submenu">
+              <button class="menu-action" data-action="zoom_in"><span>Zoom In</span><span class="shortcut">Ctrl++</span></button>
+              <button class="menu-action" data-action="zoom_out"><span>Zoom Out</span><span class="shortcut">Ctrl+-</span></button>
+              <button class="menu-action" data-action="zoom_reset"><span>Actual Size (100%)</span><span class="shortcut">Ctrl+0</span></button>
+              <div class="menu-sep"></div>
+              <button class="menu-action" data-action="zoom_set" data-arg="50"><span>50%</span></button>
+              <button class="menu-action" data-action="zoom_set" data-arg="75"><span>75%</span></button>
+              <button class="menu-action" data-action="zoom_set" data-arg="100"><span>100%</span></button>
+              <button class="menu-action" data-action="zoom_set" data-arg="125"><span>125%</span></button>
+              <button class="menu-action" data-action="zoom_set" data-arg="150"><span>150%</span></button>
+              <button class="menu-action" data-action="zoom_set" data-arg="200"><span>200%</span></button>
+            </div>
+          </div>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="restore_layout"><span>Restore Default Layout</span></button>
+        </div>
+      </div>
+
+      <!-- Insert Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Insert</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="insert_cell_after"><span>Execution Group After Cursor</span><span class="shortcut">Ctrl+J</span></button>
+          <button class="menu-action" data-action="insert_cell_before"><span>Execution Group Before Cursor</span><span class="shortcut">Ctrl+K</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="insert_section" data-arg="0"><span>Section</span></button>
+          <button class="menu-action" data-action="insert_section" data-arg="1"><span>Subsection</span></button>
+          <button class="menu-action" data-action="toggle_mode_f5"><span>Toggle 1-D / 2-D Math</span><span class="shortcut">F5</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="matrix_wizard"><span>Matrix Wizard...</span><span class="shortcut">Ctrl+M</span></button>
+          <button class="menu-action" data-action="insert_table"><span>Table...</span></button>
+          <button class="menu-action" data-action="insert_image"><span>Image...</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="insert_template" data-arg="polygonOmråde(Uligheder, x = 0 .. 10, y = 0 .. 10)"><span>polygonOmråde Linear Inequality Region</span></button>
+          <button class="menu-action" data-action="insert_template" data-arg="LPplot(30*x + 20*y, Uligheder, [100, 200, 300])"><span>LPplot Level Curves</span></button>
+          <button class="menu-action" data-action="insert_template" data-arg="diff(f(x), x)"><span>Derivative d/dx</span></button>
+          <button class="menu-action" data-action="insert_template" data-arg="integrate(f(x), x)"><span>Indefinite Integral</span></button>
+          <button class="menu-action" data-action="insert_template" data-arg="taylor(f(x), x, 0, 6)"><span>Taylor Series</span></button>
+          <button class="menu-action" data-action="insert_template" data-arg="to_bin(0x5A, 8)"><span>Embedded Bitwise Representation (0b)</span></button>
+        </div>
+      </div>
+
+      <!-- Format Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Format</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="set_mode" data-arg="2d_math"><span>2-D Math</span></button>
+          <button class="menu-action" data-action="set_mode" data-arg="1d_math"><span>1-D Math</span></button>
+          <button class="menu-action" data-action="set_mode" data-arg="text"><span>Text</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="indent_section"><span>Indent Section / Statement</span><span class="shortcut">Tab</span></button>
+          <button class="menu-action" data-action="outdent_section"><span>Outdent / Exit Section</span><span class="shortcut">Shift+Tab</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-action has-submenu">
+            <span>Line Spacing</span><span class="submenu-chevron">▶</span>
+            <div class="submenu">
+              <button class="menu-action" data-action="set_line_spacing" data-arg="1.0"><span>1.0 (Single)</span></button>
+              <button class="menu-action" data-action="set_line_spacing" data-arg="1.15"><span>1.15</span></button>
+              <button class="menu-action" data-action="set_line_spacing" data-arg="1.25"><span>1.25</span></button>
+              <button class="menu-action" data-action="set_line_spacing" data-arg="1.5"><span>1.5</span></button>
+              <button class="menu-action" data-action="set_line_spacing" data-arg="2.0"><span>2.0 (Double)</span></button>
+            </div>
+          </div>
+          <div class="menu-action has-submenu">
+            <span>Decimal Separator</span><span class="submenu-chevron">▶</span>
+            <div class="submenu">
+              <button class="menu-action" data-action="set_decimal_sep" data-arg=","><span class="checkmark dec-menu-chk" data-sep=",">✓</span><span>Comma ( , )</span></button>
+              <button class="menu-action" data-action="set_decimal_sep" data-arg="."><span class="checkmark dec-menu-chk" data-sep="."></span><span>Period ( . )</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evaluate Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Evaluate</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="execute_active"><span>Execute Selection</span><span class="shortcut">Enter</span></button>
+          <button class="menu-action" data-action="execute_all"><span>Execute Entire Worksheet</span><span class="shortcut">Ctrl+Shift+Enter</span></button>
+          <button class="menu-action" data-action="stop_execution"><span>Stop Execution</span></button>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="restart_kernel"><span>Restart Kernel</span></button>
+        </div>
+      </div>
+
+      <!-- Options Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Options</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="options"><span>Options & Preferences...</span><span class="shortcut">Ctrl+,</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-action has-submenu">
+            <span>Theme</span><span class="submenu-chevron">▶</span>
+            <div class="submenu">
+              <button class="menu-action" data-action="set_theme" data-arg="light"><span class="checkmark theme-menu-chk" data-theme="light">✓</span><span>Light Mode (Maple Classic)</span></button>
+              <button class="menu-action" data-action="set_theme" data-arg="dark"><span class="checkmark theme-menu-chk" data-theme="dark"></span><span>Dark Mode (Slate Dark)</span></button>
+            </div>
+          </div>
+          <div class="menu-sep"></div>
+          <button class="menu-action" data-action="restore_layout"><span>Restore Default Layout</span></button>
+        </div>
+      </div>
+
+      <!-- Help Menu -->
+      <div class="menu-item">
+        <button class="menu-trigger">Help</button>
+        <div class="dropdown-menu">
+          <button class="menu-action" data-action="help_topics"><span>Help Topics (e.g. ? diff)</span></button>
+          <button class="menu-action" data-action="about"><span>About OpenMath</span></button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 2. Toolbars Container -->
+    <div class="toolbars-container">
+      <!-- Tier 1: Main Toolbar -->
+      <div class="main-toolbar">
+        <button id="tb-btn-new" class="tb-btn" title="New Worksheet (Ctrl+N)">📄 New</button>
+        <button id="tb-btn-open" class="tb-btn" title="Open Document (Ctrl+O)">📂 Open</button>
+        <button id="tb-btn-save" class="tb-btn" title="Save Document (Ctrl+S)">💾 Save</button>
+        <button id="tb-btn-print" class="tb-btn" title="Print Document (Ctrl+P)">🖨️ Print</button>
+        <div class="tb-sep"></div>
+        <button id="tb-btn-undo" class="tb-btn" title="Undo (Ctrl+Z)">Undo</button>
+        <button id="tb-btn-redo" class="tb-btn" title="Redo (Ctrl+Y)">Redo</button>
+        <div class="tb-sep"></div>
+        <button id="tb-btn-eval" class="tb-btn btn-eval" title="Evaluate Active Cell (Enter)">▶ Eval</button>
+        <button id="tb-btn-eval-all" class="tb-btn btn-eval-all" title="Execute Entire Worksheet (Ctrl+Shift+Enter)">▶▶ Eval All</button>
+        <button id="tb-btn-stop" class="tb-btn btn-stop" title="Stop Current Calculation">⏹ Stop</button>
+        <button id="tb-btn-restart" class="tb-btn" title="Restart CAS Engine & Clear Worksheet">↺ Restart</button>
+        <div class="tb-sep"></div>
+        <button id="tb-btn-zoom-out" class="tb-btn" title="Zoom Out (Ctrl+-)">Zoom −</button>
+        <button id="tb-btn-zoom-in" class="tb-btn" title="Zoom In (Ctrl++)">Zoom +</button>
+
+        <div class="search-box-wrapper">
+          <input type="text" id="tb-search-input" class="toolbar-search-input" placeholder="🔍 Search Help & Functions (e.g. solve, diff)..." autocomplete="off" />
+          <div id="tb-search-autocomplete" class="search-autocomplete-list"></div>
+        </div>
+      </div>
+
+      <!-- Tier 2: Document Tabs Toolbar -->
+      <div class="tab-bar-toolbar">
+        <div class="tabs-container" id="document-tabs-list">
+          <!-- Document tabs dynamically injected here -->
+        </div>
+        <button id="btn-tab-add" class="tab-add-btn" title="New Worksheet Tab">+</button>
+        <button id="btn-tab-overflow" class="tab-overflow-btn" title="More Tabs" style="display:none;">▼</button>
+      </div>
+
+      <!-- Tier 3: Context Bar Toolbar -->
+      <div class="context-toolbar">
+        <button id="pill-mode-text" class="mode-pill">Text</button>
+        <button id="pill-mode-nonexec" class="mode-pill">Nonexecutable Math</button>
+        <button id="pill-mode-math" class="mode-pill active">Math</button>
+        <button id="pill-mode-c" class="mode-pill">C</button>
+
+        <select id="context-font-combo" class="font-combo">
+          <option value="Times New Roman" selected>Times New Roman</option>
+          <option value="Arial">Arial</option>
+          <option value="Consolas">Consolas</option>
+          <option value="Courier New">Courier New</option>
+          <option value="Cambria Math">Cambria Math</option>
+        </select>
+
+        <select id="context-font-size-combo" class="font-size-combo">
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12" selected>12</option>
+          <option value="14">14</option>
+          <option value="16">16</option>
+          <option value="18">18</option>
+          <option value="20">20</option>
+          <option value="24">24</option>
+          <option value="28">28</option>
+          <option value="36">36</option>
+        </select>
+
+        <button id="btn-fmt-bold" class="fmt-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+        <button id="btn-fmt-italic" class="fmt-btn" title="Italic (Ctrl+I)"><em>I</em></button>
+        <button id="btn-fmt-underline" class="fmt-btn" title="Underline (Ctrl+U)"><u>U</u></button>
+
+        <button id="btn-align-left" class="fmt-btn" title="Align Left">≡</button>
+        <button id="btn-align-center" class="fmt-btn" title="Align Center">≢</button>
+        <button id="btn-align-right" class="fmt-btn" title="Align Right">≣</button>
+
+        <button id="btn-outdent" class="fmt-btn" title="Decrease Indent (Shift+Tab)">⇤</button>
+        <button id="btn-indent" class="fmt-btn" title="Increase Indent (Tab)">⇥</button>
+
+        <!-- Line Spacing Dropdown -->
+        <div style="position: relative; display: inline-block;">
+          <button id="btn-line-spacing" class="fmt-btn" title="Line Spacing">↕</button>
+          <div id="line-spacing-popup" class="dropdown-menu" style="min-width: 140px;">
+            <button class="menu-action" data-spacing="1.0"><span>1.0 (Single)</span></button>
+            <button class="menu-action" data-spacing="1.15"><span>1.15</span></button>
+            <button class="menu-action" data-spacing="1.25"><span>1.25</span></button>
+            <button class="menu-action" data-spacing="1.5"><span>1.5</span></button>
+            <button class="menu-action" data-spacing="2.0"><span>2.0 (Double)</span></button>
+          </div>
+        </div>
+
+        <span style="color: var(--border); margin: 0 2px;">|</span>
+
+        <!-- Text Color Swatch Button -->
+        <div style="position: relative; display: inline-block;">
+          <button id="btn-text-color-swatch" class="swatch-btn" title="Text Color">
+            <span class="swatch-icon-letter">A</span>
+            <div class="swatch-color-bar"></div>
+          </button>
+          <div id="text-color-popup" class="color-palette-popup">
+            <button class="dialog-btn reset-color-btn" style="width: 100%; height: 24px; font-size: 11px; margin-bottom: 4px;">Automatic (Black)</button>
+            <div class="color-grid-20">
+              <div class="color-cell" data-color="#000000" style="background:#000000;"></div>
+              <div class="color-cell" data-color="#475569" style="background:#475569;"></div>
+              <div class="color-cell" data-color="#94a3b8" style="background:#94a3b8;"></div>
+              <div class="color-cell" data-color="#dc2626" style="background:#dc2626;"></div>
+              <div class="color-cell" data-color="#ea580c" style="background:#ea580c;"></div>
+              <div class="color-cell" data-color="#ca8a04" style="background:#ca8a04;"></div>
+              <div class="color-cell" data-color="#facc15" style="background:#facc15;"></div>
+              <div class="color-cell" data-color="#16a34a" style="background:#16a34a;"></div>
+              <div class="color-cell" data-color="#0d9488" style="background:#0d9488;"></div>
+              <div class="color-cell" data-color="#0284c7" style="background:#0284c7;"></div>
+              <div class="color-cell" data-color="#2563eb" style="background:#2563eb;"></div>
+              <div class="color-cell" data-color="#4f46e5" style="background:#4f46e5;"></div>
+              <div class="color-cell" data-color="#9333ea" style="background:#9333ea;"></div>
+              <div class="color-cell" data-color="#db2777" style="background:#db2777;"></div>
+              <div class="color-cell" data-color="#881337" style="background:#881337;"></div>
+              <div class="color-cell" data-color="#fef08a" style="background:#fef08a;"></div>
+              <div class="color-cell" data-color="#bbf7d0" style="background:#bbf7d0;"></div>
+              <div class="color-cell" data-color="#bae6fd" style="background:#bae6fd;"></div>
+              <div class="color-cell" data-color="#e9d5ff" style="background:#e9d5ff;"></div>
+              <div class="color-cell" data-color="#fce7f3" style="background:#fce7f3;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Highlight Swatch Button -->
+        <div style="position: relative; display: inline-block;">
+          <button id="btn-highlight-swatch" class="swatch-btn" title="Highlight Color">
+            <span class="swatch-icon-letter">🖍</span>
+            <div class="swatch-color-bar highlight-swatch-bar"></div>
+          </button>
+          <div id="highlight-color-popup" class="color-palette-popup">
+            <button class="dialog-btn reset-color-btn" style="width: 100%; height: 24px; font-size: 11px; margin-bottom: 4px;">No Color (Transparent)</button>
+            <div class="color-grid-20">
+              <div class="color-cell" data-color="#fef08a" style="background:#fef08a;"></div>
+              <div class="color-cell" data-color="#bbf7d0" style="background:#bbf7d0;"></div>
+              <div class="color-cell" data-color="#bae6fd" style="background:#bae6fd;"></div>
+              <div class="color-cell" data-color="#e9d5ff" style="background:#e9d5ff;"></div>
+              <div class="color-cell" data-color="#fce7f3" style="background:#fce7f3;"></div>
+              <div class="color-cell" data-color="#facc15" style="background:#facc15;"></div>
+              <div class="color-cell" data-color="#4ade80" style="background:#4ade80;"></div>
+              <div class="color-cell" data-color="#38bdf8" style="background:#38bdf8;"></div>
+              <div class="color-cell" data-color="#c084fc" style="background:#c084fc;"></div>
+              <div class="color-cell" data-color="#f472b6" style="background:#f472b6;"></div>
+              <div class="color-cell" data-color="#fb923c" style="background:#fb923c;"></div>
+              <div class="color-cell" data-color="#fdba74" style="background:#fdba74;"></div>
+              <div class="color-cell" data-color="#93c5fd" style="background:#93c5fd;"></div>
+              <div class="color-cell" data-color="#a7f3d0" style="background:#a7f3d0;"></div>
+              <div class="color-cell" data-color="#fed7aa" style="background:#fed7aa;"></div>
+              <div class="color-cell" data-color="#e2e8f0" style="background:#e2e8f0;"></div>
+              <div class="color-cell" data-color="#cbd5e1" style="background:#cbd5e1;"></div>
+              <div class="color-cell" data-color="#94a3b8" style="background:#94a3b8;"></div>
+              <div class="color-cell" data-color="#64748b" style="background:#64748b;"></div>
+              <div class="color-cell" data-color="#334155" style="background:#334155;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Split Button -->
+        <div class="section-split-btn" style="position: relative;">
+          <button id="btn-sec-main" class="section-split-main" title="Insert Section">▼ Section</button>
+          <button id="btn-sec-arrow" class="section-split-arrow" title="More Section Options">▾</button>
+          <div id="sec-dropdown-menu" class="dropdown-menu" style="min-width: 180px;">
+            <button class="menu-action" data-action="insert_section" data-arg="0"><span>Insert Section</span></button>
+            <button class="menu-action" data-action="insert_section" data-arg="1"><span>Insert Sub-section</span></button>
+            <div class="menu-sep"></div>
+            <button class="menu-action" data-action="indent_section"><span>Indent Section (Tab)</span></button>
+            <button class="menu-action" data-action="outdent_section"><span>Outdent / Exit (Shift+Tab)</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. App Body Layout: Left Dock, Center Workspace Stack, Right Dock -->
+    <div class="app-body">
+      <!-- Left Dock: Palettes -->
+      <aside id="palette-dock" class="palette-dock">
+        <div class="dock-header">
+          <span>Palettes</span>
+          <button id="btn-close-palette-dock" class="dock-close-btn" title="Close Dock">✕</button>
+        </div>
+
+        <div class="dock-tabs-bar">
+          <button class="dock-tab-btn active" data-tab="dock-tab-palettes">Palettes</button>
+          <button class="dock-tab-btn" data-tab="dock-tab-formulas">Formulas</button>
+          <button class="dock-tab-btn" data-tab="dock-tab-variables">Variables</button>
+        </div>
+
+        <!-- Tab 1: Palettes Accordion -->
+        <div id="dock-tab-palettes" class="dock-tab-content">
+          <!-- Accordion 1: Favorites -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Favorites</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="diff(x, x)" title="Derivative">d/dx</button>
+                <button class="palette-cell-btn" data-insert="integrate(x, x)" title="Integral">∫ dx</button>
+                <button class="palette-cell-btn" data-insert="solve(x^2 - 4 = 0, x)" title="Solve">solve</button>
+                <button class="palette-cell-btn" data-insert="Matrix([[1, 0], [0, 1]])" title="Matrix">Mat</button>
+                <button class="palette-cell-btn" data-insert="plot(sin(x), (x, -5, 5))" title="Plot">plot</button>
+                <button class="palette-cell-btn" data-insert="to_bin(0x5A, 8)" title="Binary">0b</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 2: Expression -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Expression</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="(a)/(b)" title="Fraction">a/b</button>
+                <button class="palette-cell-btn" data-insert="x^2" title="Power">x²</button>
+                <button class="palette-cell-btn" data-insert="sqrt(x)" title="Square Root">√x</button>
+                <button class="palette-cell-btn" data-insert="root(x, 3)" title="N-th Root">ⁿ√x</button>
+                <button class="palette-cell-btn" data-insert="abs(x)" title="Absolute Value">|x|</button>
+                <button class="palette-cell-btn" data-insert="diff(f(x), x)" title="Derivative">d/dx</button>
+                <button class="palette-cell-btn" data-insert="integrate(f(x), x)" title="Indefinite Integral">∫ dx</button>
+                <button class="palette-cell-btn" data-insert="integrate(f(x), (x, a, b))" title="Definite Integral">∫[a,b]</button>
+                <button class="palette-cell-btn" data-insert="limit(f(x), x, 0)" title="Limit">lim</button>
+                <button class="palette-cell-btn" data-insert="Sum(f(i), (i, 1, n))" title="Summation">∑</button>
+                <button class="palette-cell-btn" data-insert="Product(f(i), (i, 1, n))" title="Product">∏</button>
+                <button class="palette-cell-btn" data-insert="Piecewise((x, x > 0), (-x, True))" title="Piecewise">pw</button>
+                <button class="palette-cell-btn" data-insert="Matrix([[a, b], [c, d]])" title="2x2 Matrix">[2×2]</button>
+                <button class="palette-cell-btn" data-insert="Matrix([[a], [b]])" title="Vector">[Vec]</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 3: Common Symbols -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Common Symbols</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="pi">π</button>
+                <button class="palette-cell-btn" data-insert="E">e</button>
+                <button class="palette-cell-btn" data-insert="oo">∞</button>
+                <button class="palette-cell-btn" data-insert="I">i</button>
+                <button class="palette-cell-btn" data-insert="+-">±</button>
+                <button class="palette-cell-btn" data-insert="*">·</button>
+                <button class="palette-cell-btn" data-insert="<=">≤</button>
+                <button class="palette-cell-btn" data-insert=">=">≥</button>
+                <button class="palette-cell-btn" data-insert="!=">≠</button>
+                <button class="palette-cell-btn" data-insert="Approx">≈</button>
+                <button class="palette-cell-btn" data-insert="in">∈</button>
+                <button class="palette-cell-btn" data-insert="not in">∉</button>
+                <button class="palette-cell-btn" data-insert="subset">⊂</button>
+                <button class="palette-cell-btn" data-insert="intersect">∩</button>
+                <button class="palette-cell-btn" data-insert="union">∪</button>
+                <button class="palette-cell-btn" data-insert="Derivative">∂</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 4: Calculus -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Calculus</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="diff(sin(x), x)">diff</button>
+                <button class="palette-cell-btn" data-insert="integrate(cos(x), x)">integrate</button>
+                <button class="palette-cell-btn" data-insert="limit(sin(x)/x, x, 0)">limit</button>
+                <button class="palette-cell-btn" data-insert="series(exp(x), x, 0, 5)">series</button>
+                <button class="palette-cell-btn" data-insert="taylor(sin(x), x, 0, 6)">taylor</button>
+                <button class="palette-cell-btn" data-insert="dsolve(diff(y(x), x) - y(x), y(x))">dsolve</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 5: Greek -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Greek</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="alpha">α</button>
+                <button class="palette-cell-btn" data-insert="beta">β</button>
+                <button class="palette-cell-btn" data-insert="gamma">γ</button>
+                <button class="palette-cell-btn" data-insert="delta">δ</button>
+                <button class="palette-cell-btn" data-insert="theta">θ</button>
+                <button class="palette-cell-btn" data-insert="lambda">λ</button>
+                <button class="palette-cell-btn" data-insert="mu">μ</button>
+                <button class="palette-cell-btn" data-insert="pi">π</button>
+                <button class="palette-cell-btn" data-insert="sigma">σ</button>
+                <button class="palette-cell-btn" data-insert="phi">φ</button>
+                <button class="palette-cell-btn" data-insert="omega">ω</button>
+                <button class="palette-cell-btn" data-insert="Gamma">Γ</button>
+                <button class="palette-cell-btn" data-insert="Delta">Δ</button>
+                <button class="palette-cell-btn" data-insert="Theta">Θ</button>
+                <button class="palette-cell-btn" data-insert="Lambda">Λ</button>
+                <button class="palette-cell-btn" data-insert="Omega">Ω</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 6: Matrices -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Matrices</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button id="btn-open-matrix-wizard" class="palette-cell-btn wizard-btn">✨ Matrix Wizard...</button>
+                <button class="palette-cell-btn" data-insert="det(M)">det</button>
+                <button class="palette-cell-btn" data-insert="inv(M)">inv</button>
+                <button class="palette-cell-btn" data-insert="transpose(M)">transpose</button>
+                <button class="palette-cell-btn" data-insert="rref(M)">rref</button>
+                <button class="palette-cell-btn" data-insert="eigenvals(M)">eigenvals</button>
+                <button class="palette-cell-btn" data-insert="eigenvects(M)">eigenvects</button>
+                <button class="palette-cell-btn" data-insert="rank(M)">rank</button>
+                <button class="palette-cell-btn" data-insert="trace(M)">trace</button>
+                <button class="palette-cell-btn" data-insert="nullspace(M)">nullspace</button>
+                <button class="palette-cell-btn" data-insert="eye(3)">eye(3)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 7: Embedded Systems -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Embedded Systems</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="to_bin(0xA5, 8)">to_bin</button>
+                <button class="palette-cell-btn" data-insert="to_hex(255, 8)">to_hex</button>
+                <button class="palette-cell-btn" data-insert="twos_comp_repr(-5, 8)">twos_comp</button>
+                <button class="palette-cell-btn" data-insert="to_q(3.14, 7, 8)">to_q</button>
+                <button class="palette-cell-btn" data-insert="ieee754(12.375)">ieee754</button>
+                <button class="palette-cell-btn" data-insert="adc_volt(512, 3.3, 10)">adc_volt</button>
+                <button class="palette-cell-btn" data-insert="rc_cutoff(10*kOhm, 100*nF)">rc_cutoff</button>
+                <button class="palette-cell-btn" data-insert="voltage_divider(5.0, 10*kOhm, 10*kOhm)">v_divider</button>
+                <button class="palette-cell-btn" data-insert="ubrr_calc(16*MHz, 9600)">ubrr_calc</button>
+                <button class="palette-cell-btn" data-insert="crc8(b'hello')">crc8</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 8: Units -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Units</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="kOhm">kΩ</button>
+                <button class="palette-cell-btn" data-insert="MOhm">MΩ</button>
+                <button class="palette-cell-btn" data-insert="pF">pF</button>
+                <button class="palette-cell-btn" data-insert="nF">nF</button>
+                <button class="palette-cell-btn" data-insert="uF">μF</button>
+                <button class="palette-cell-btn" data-insert="kHz">kHz</button>
+                <button class="palette-cell-btn" data-insert="MHz">MHz</button>
+                <button class="palette-cell-btn" data-insert="mV">mV</button>
+                <button class="palette-cell-btn" data-insert="mA">mA</button>
+                <button class="palette-cell-btn" data-insert="us">μs</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accordion 9: Plots -->
+          <div class="accordion-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Plots</button>
+            <div class="accordion-body">
+              <div class="palette-grid">
+                <button class="palette-cell-btn" data-insert="plot(sin(x), (x, -5, 5))">plot 2D</button>
+                <button class="palette-cell-btn" data-insert="plot([sin(x), cos(x)], (x, -5, 5))">multi-plot</button>
+                <button class="palette-cell-btn" data-insert="plot_parametric(cos(t), sin(t), (t, 0, 2*pi))">parametric</button>
+                <button class="palette-cell-btn" data-insert="plot_polar(1 + cos(theta), (theta, 0, 2*pi))">polar</button>
+                <button class="palette-cell-btn" data-insert="polygonOmråde([x >= 0, y >= 0, x + y <= 10], x = 0..12, y = 0..12)">polygon</button>
+                <button class="palette-cell-btn" data-insert="LPplot(30*x + 20*y, [x >= 0, y >= 0, x + y <= 10], [100, 200, 300])">LPplot</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Formulas -->
+        <div id="dock-tab-formulas" class="dock-tab-content" style="display:none;">
+          <input type="text" id="formulas-search-input" class="toolbar-search-input" style="width: 100%; margin-bottom: 6px;" placeholder="🔍 Search formulas & plots..." autocomplete="off" />
+
+          <!-- Category 1: Plotting Formulas -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Plotting Formulas</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="plot(2 * x + 3, x = -10..10)" data-title="Linear Line (Single)" data-desc="2D straight line with slope and y-intercept">
+                  <div class="formula-card-title">Linear Line (Single)</div>
+                  <div class="formula-card-code">plot(2 · x + 3, x = -10..10)</div>
+                  <div class="formula-card-desc">2D straight line with slope and y-intercept</div>
+                </div>
+                <div class="formula-card" data-formula="plot([2 * x + 1, -x + 4, 0.5 * x - 2], x = -5..5)" data-title="Multiple Lines" data-desc="Compare multiple linear curves on the same plot">
+                  <div class="formula-card-title">Multiple Lines</div>
+                  <div class="formula-card-code">plot([2 · x + 1, -x + 4, 0.5 · x - 2], x = -5..5)</div>
+                  <div class="formula-card-desc">Compare multiple linear curves on the same plot</div>
+                </div>
+                <div class="formula-card" data-formula="plot(x^2 - 4 * x + 3, x = -2..6)" data-title="Quadratic / Parabola" data-desc="Parabola with vertex and roots">
+                  <div class="formula-card-title">Quadratic / Parabola</div>
+                  <div class="formula-card-code">plot(x² - 4 · x + 3, x = -2..6)</div>
+                  <div class="formula-card-desc">Parabola with vertex and roots</div>
+                </div>
+                <div class="formula-card" data-formula="plot(x^3 - 3 * x, x = -2.5..2.5)" data-title="Cubic Polynomial" data-desc="3rd degree polynomial curve">
+                  <div class="formula-card-title">Cubic Polynomial</div>
+                  <div class="formula-card-code">plot(x³ - 3 · x, x = -2.5..2.5)</div>
+                  <div class="formula-card-desc">3rd degree polynomial curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot(sin(x), x = -2 * pi .. 2 * pi)" data-title="Sine Wave" data-desc="Periodic harmonic sine wave">
+                  <div class="formula-card-title">Sine Wave</div>
+                  <div class="formula-card-code">plot(sin(x), x = -2 · π .. 2 · π)</div>
+                  <div class="formula-card-desc">Periodic harmonic sine wave</div>
+                </div>
+                <div class="formula-card" data-formula="plot(cos(x), x = -2 * pi .. 2 * pi)" data-title="Cosine Wave" data-desc="Periodic harmonic cosine wave">
+                  <div class="formula-card-title">Cosine Wave</div>
+                  <div class="formula-card-code">plot(cos(x), x = -2 · π .. 2 · π)</div>
+                  <div class="formula-card-desc">Periodic harmonic cosine wave</div>
+                </div>
+                <div class="formula-card" data-formula="plot(exp(-0.2 * x) * cos(2 * x), x = 0..20)" data-title="Damped Oscillation" data-desc="Decaying sinusoidal oscillation curve">
+                  <div class="formula-card-title">Damped Oscillation</div>
+                  <div class="formula-card-code">plot(exp(-0.2 · x) · cos(2 · x), x = 0..20)</div>
+                  <div class="formula-card-desc">Decaying sinusoidal oscillation curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot(exp(-x/2), x = 0..10)" data-title="Exponential Decay" data-desc="Exponential decay function">
+                  <div class="formula-card-title">Exponential Decay</div>
+                  <div class="formula-card-code">plot(exp(-x/2), x = 0..10)</div>
+                  <div class="formula-card-desc">Exponential decay function</div>
+                </div>
+                <div class="formula-card" data-formula="plot(1 / (x^2 + 1), x = -5..5)" data-title="Rational Curve" data-desc="Bell-shaped rational curve">
+                  <div class="formula-card-title">Rational Curve</div>
+                  <div class="formula-card-code">plot(1 / (x² + 1), x = -5..5)</div>
+                  <div class="formula-card-desc">Bell-shaped rational curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot([cos(t), sin(t)], t = 0 .. 2 * pi)" data-title="Parametric Circle" data-desc="2D parametric circular trajectory">
+                  <div class="formula-card-title">Parametric Circle</div>
+                  <div class="formula-card-code">plot([cos(t), sin(t)], t = 0 .. 2 · π)</div>
+                  <div class="formula-card-desc">2D parametric circular trajectory</div>
+                </div>
+                <div class="formula-card" data-formula="plot(cos(4 * theta), theta = 0 .. 2 * pi)" data-title="Polar Rose" data-desc="4-petal polar rose plot">
+                  <div class="formula-card-title">Polar Rose</div>
+                  <div class="formula-card-code">plot(cos(4 · theta), theta = 0 .. 2 · π)</div>
+                  <div class="formula-card-desc">4-petal polar rose plot</div>
+                </div>
+                <div class="formula-card" data-formula="polygonOmråde([x >= 0, y >= 0, x + y <= 10], x = 0..12, y = 0..12)" data-title="Feasible Region (LP)" data-desc="Linear programming feasible polygon">
+                  <div class="formula-card-title">Feasible Region (LP)</div>
+                  <div class="formula-card-code">polygonOmråde([x >= 0, y >= 0, x + y <= 10], x = 0..12, y = 0..12)</div>
+                  <div class="formula-card-desc">Linear programming feasible polygon</div>
+                </div>
+                <div class="formula-card" data-formula="LPplot(30 * x + 20 * y, [x >= 0, y >= 0, x + y <= 10], [100, 200, 300])" data-title="LP Level Curves" data-desc="Optimization objective level lines">
+                  <div class="formula-card-title">LP Level Curves</div>
+                  <div class="formula-card-code">LPplot(30 · x + 20 · y, [x >= 0, y >= 0, x + y <= 10], [100, 200, 300])</div>
+                  <div class="formula-card-desc">Optimization objective level lines</div>
+                </div>
+                <div class="formula-card" data-formula="plot3d(sin(x) * cos(y), x = -pi .. pi, y = -pi .. pi)" data-title="3D Surface Plot" data-desc="3D bivariate surface plot">
+                  <div class="formula-card-title">3D Surface Plot</div>
+                  <div class="formula-card-code">plot3d(sin(x) · cos(y), x = -π .. π, y = -π .. π)</div>
+                  <div class="formula-card-desc">3D bivariate surface plot</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 2: Embedded & Hardware Formulas -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Embedded & Hardware</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="V := I * R" data-title="Ohm's Law" data-desc="Voltage, current, and resistance: V = I · R">
+                  <div class="formula-card-title">Ohm's Law</div>
+                  <div class="formula-card-code">V := I · R</div>
+                  <div class="formula-card-desc">Voltage, current, and resistance: V = I · R</div>
+                </div>
+                <div class="formula-card" data-formula="voltage_divider(5.0, 10000, 4700)" data-title="Voltage Divider" data-desc="Calculate Vout from Vin, R1, and R2">
+                  <div class="formula-card-title">Voltage Divider</div>
+                  <div class="formula-card-code">voltage_divider(5.0, 10000, 4700)</div>
+                  <div class="formula-card-desc">Calculate Vout from Vin, R1, and R2</div>
+                </div>
+                <div class="formula-card" data-formula="R_eq := (R_1 * R_2) / (R_1 + R_2)" data-title="Parallel Resistors" data-desc="Equivalent resistance of parallel pair">
+                  <div class="formula-card-title">Parallel Resistors</div>
+                  <div class="formula-card-code">R_eq := (R_1 · R_2) / (R_1 + R_2)</div>
+                  <div class="formula-card-desc">Equivalent resistance of parallel pair</div>
+                </div>
+                <div class="formula-card" data-formula="rc_cutoff(10*kOhm, 100*nF)" data-title="RC Low-Pass Cutoff" data-desc="fc = 1 / (2 · pi · R · C)">
+                  <div class="formula-card-title">RC Low-Pass Cutoff</div>
+                  <div class="formula-card-code">rc_cutoff(10 · kOhm, 100 · nF)</div>
+                  <div class="formula-card-desc">fc = 1 / (2 · π · R · C)</div>
+                </div>
+                <div class="formula-card" data-formula="tau := R * C" data-title="RC Time Constant" data-desc="Step response time constant tau = R · C">
+                  <div class="formula-card-title">RC Time Constant</div>
+                  <div class="formula-card-code">tau := R · C</div>
+                  <div class="formula-card-desc">Step response time constant tau = R · C</div>
+                </div>
+                <div class="formula-card" data-formula="adc_volt(3.3, 3.3, 12)" data-title="ADC Voltage to Count" data-desc="Convert analog volts to N-bit digital integer">
+                  <div class="formula-card-title">ADC Voltage to Count</div>
+                  <div class="formula-card-code">adc_volt(3.3, 3.3, 12)</div>
+                  <div class="formula-card-desc">Convert analog volts to N-bit digital integer</div>
+                </div>
+                <div class="formula-card" data-formula="adc_raw(2048, 3.3, 12)" data-title="ADC Count to Voltage" data-desc="Convert raw digital count to measured volts">
+                  <div class="formula-card-title">ADC Count to Voltage</div>
+                  <div class="formula-card-code">adc_raw(2048, 3.3, 12)</div>
+                  <div class="formula-card-desc">Convert raw digital count to measured volts</div>
+                </div>
+                <div class="formula-card" data-formula="ubrr_calc(72*MHz, 115200)" data-title="UART Baud Divisor" data-desc="Calculate UART clock prescaler register">
+                  <div class="formula-card-title">UART Baud Divisor</div>
+                  <div class="formula-card-code">ubrr_calc(72 · MHz, 115200)</div>
+                  <div class="formula-card-desc">Calculate UART clock prescaler register</div>
+                </div>
+                <div class="formula-card" data-formula="timer_calc(72*MHz, 1000)" data-title="Timer ARR Prescaler" data-desc="Timer auto-reload & prescaler for frequency">
+                  <div class="formula-card-title">Timer ARR Prescaler</div>
+                  <div class="formula-card-code">timer_calc(72 · MHz, 1000)</div>
+                  <div class="formula-card-desc">Timer auto-reload & prescaler for frequency</div>
+                </div>
+                <div class="formula-card" data-formula="bit_set(0x00, 3)" data-title="Bit Set" data-desc="Set bit n in register: reg | (1 << bit)">
+                  <div class="formula-card-title">Bit Set</div>
+                  <div class="formula-card-code">bit_set(0x00, 3)</div>
+                  <div class="formula-card-desc">Set bit n in register: reg | (1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_clear(0xFF, 3)" data-title="Bit Clear" data-desc="Clear bit n in register: reg & ~(1 << bit)">
+                  <div class="formula-card-title">Bit Clear</div>
+                  <div class="formula-card-code">bit_clear(0xFF, 3)</div>
+                  <div class="formula-card-desc">Clear bit n in register: reg &amp; ~(1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_toggle(0x00, 2)" data-title="Bit Toggle" data-desc="Toggle bit n in register: reg ^ (1 << bit)">
+                  <div class="formula-card-title">Bit Toggle</div>
+                  <div class="formula-card-code">bit_toggle(0x00, 2)</div>
+                  <div class="formula-card-desc">Toggle bit n in register: reg ^ (1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_field(0xABCD, 4, 8)" data-title="Extract Bitfield" data-desc="Extract bits at given offset and width">
+                  <div class="formula-card-title">Extract Bitfield</div>
+                  <div class="formula-card-code">bit_field(0xABCD, 4, 8)</div>
+                  <div class="formula-card-desc">Extract bits at given offset and width</div>
+                </div>
+                <div class="formula-card" data-formula="to_bin(0xA5, 8)" data-title="Binary Representation" data-desc="Format integer as binary bit string">
+                  <div class="formula-card-title">Binary Representation</div>
+                  <div class="formula-card-code">to_bin(0xA5, 8)</div>
+                  <div class="formula-card-desc">Format integer as binary bit string</div>
+                </div>
+                <div class="formula-card" data-formula="to_hex(165, 8)" data-title="Hex Representation" data-desc="Format integer as hexadecimal string">
+                  <div class="formula-card-title">Hex Representation</div>
+                  <div class="formula-card-code">to_hex(165, 8)</div>
+                  <div class="formula-card-desc">Format integer as hexadecimal string</div>
+                </div>
+                <div class="formula-card" data-formula="two_comp_repr(-42, 8)" data-title="Two's Complement" data-desc="Signed 2's complement representation">
+                  <div class="formula-card-title">Two's Complement</div>
+                  <div class="formula-card-code">two_comp_repr(-42, 8)</div>
+                  <div class="formula-card-desc">Signed 2's complement representation</div>
+                </div>
+                <div class="formula-card" data-formula="P := I^2 * R" data-title="Electric Power (P = I²R)" data-desc="Electrical power dissipated in resistor">
+                  <div class="formula-card-title">Electric Power (P = I²R)</div>
+                  <div class="formula-card-code">P := I² · R</div>
+                  <div class="formula-card-desc">Electrical power dissipated in resistor</div>
+                </div>
+                <div class="formula-card" data-formula="E := (1/2) * C * V^2" data-title="Capacitor Energy" data-desc="Stored electrical energy in joules">
+                  <div class="formula-card-title">Capacitor Energy</div>
+                  <div class="formula-card-code">E := (1/2) · C · V²</div>
+                  <div class="formula-card-desc">Stored electrical energy in joules</div>
+                </div>
+                <div class="formula-card" data-formula="XL := 2 * pi * f * L" data-title="Inductive Reactance (XL)" data-desc="AC impedance of inductor in ohms">
+                  <div class="formula-card-title">Inductive Reactance (XL)</div>
+                  <div class="formula-card-code">XL := 2 · π · f · L</div>
+                  <div class="formula-card-desc">AC impedance of inductor in ohms</div>
+                </div>
+                <div class="formula-card" data-formula="XC := 1 / (2 * pi * f * C)" data-title="Capacitive Reactance (XC)" data-desc="AC impedance of capacitor in ohms">
+                  <div class="formula-card-title">Capacitive Reactance (XC)</div>
+                  <div class="formula-card-code">XC := 1 / (2 · π · f · C)</div>
+                  <div class="formula-card-desc">AC impedance of capacitor in ohms</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 3: Calculus & Algebra -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Calculus & Algebra</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="diff(f(x), x)" data-title="Derivative" data-desc="Differentiate f(x) with respect to x">
+                  <div class="formula-card-title">Derivative</div>
+                  <div class="formula-card-code">diff(f(x), x)</div>
+                  <div class="formula-card-desc">Differentiate f(x) with respect to x</div>
+                </div>
+                <div class="formula-card" data-formula="integrate(f(x), (x, a, b))" data-title="Definite Integral" data-desc="Definite Riemann integral from a to b">
+                  <div class="formula-card-title">Definite Integral</div>
+                  <div class="formula-card-code">integrate(f(x), (x, a, b))</div>
+                  <div class="formula-card-desc">Definite Riemann integral from a to b</div>
+                </div>
+                <div class="formula-card" data-formula="integrate(f(x), x)" data-title="Indefinite Integral" data-desc="Antiderivative of f(x)">
+                  <div class="formula-card-title">Indefinite Integral</div>
+                  <div class="formula-card-code">integrate(f(x), x)</div>
+                  <div class="formula-card-desc">Antiderivative of f(x)</div>
+                </div>
+                <div class="formula-card" data-formula="Sum(k^2, (k, 1, n))" data-title="Summation" data-desc="Sum of terms from k=1 to n">
+                  <div class="formula-card-title">Summation</div>
+                  <div class="formula-card-code">Sum(k², (k, 1, n))</div>
+                  <div class="formula-card-desc">Sum of terms from k=1 to n</div>
+                </div>
+                <div class="formula-card" data-formula="Product(k, (k, 1, n))" data-title="Product" data-desc="Product of terms from k=1 to n">
+                  <div class="formula-card-title">Product</div>
+                  <div class="formula-card-code">Product(k, (k, 1, n))</div>
+                  <div class="formula-card-desc">Product of terms from k=1 to n</div>
+                </div>
+                <div class="formula-card" data-formula="sqrt(x^2 + 1)" data-title="Square Root" data-desc="Square root radical">
+                  <div class="formula-card-title">Square Root</div>
+                  <div class="formula-card-code">sqrt(x² + 1)</div>
+                  <div class="formula-card-desc">Square root radical</div>
+                </div>
+                <div class="formula-card" data-formula="log(x, 10)" data-title="Base-10 Logarithm" data-desc="Common logarithm base 10">
+                  <div class="formula-card-title">Base-10 Logarithm</div>
+                  <div class="formula-card-code">log(x, 10)</div>
+                  <div class="formula-card-desc">Common logarithm base 10</div>
+                </div>
+                <div class="formula-card" data-formula="solve(f(x) = 0, x)" data-title="Solve Equation" data-desc="Solve algebraic equation for x">
+                  <div class="formula-card-title">Solve Equation</div>
+                  <div class="formula-card-code">solve(f(x) = 0, x)</div>
+                  <div class="formula-card-desc">Solve algebraic equation for x</div>
+                </div>
+                <div class="formula-card" data-formula="solve([x + y = 10, 2 * x - y = 4], [x, y])" data-title="Solve System" data-desc="Solve system of simultaneous equations">
+                  <div class="formula-card-title">Solve System</div>
+                  <div class="formula-card-code">solve([x + y = 10, 2 · x - y = 4], [x, y])</div>
+                  <div class="formula-card-desc">Solve system of simultaneous equations</div>
+                </div>
+                <div class="formula-card" data-formula="taylor(f(x), x, 0, 5)" data-title="Taylor Series" data-desc="Taylor polynomial expansion">
+                  <div class="formula-card-title">Taylor Series</div>
+                  <div class="formula-card-code">taylor(f(x), x, 0, 5)</div>
+                  <div class="formula-card-desc">Taylor polynomial expansion</div>
+                </div>
+                <div class="formula-card" data-formula="limit(f(x), x, 0)" data-title="Limit" data-desc="Evaluate limit as x approaches value">
+                  <div class="formula-card-title">Limit</div>
+                  <div class="formula-card-code">limit(f(x), x, 0)</div>
+                  <div class="formula-card-desc">Evaluate limit as x approaches value</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Variables -->
+        <div id="dock-tab-variables" class="dock-tab-content" style="display:none;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 6px;">
+            <button id="btn-clear-variables" class="dialog-btn" style="height: 22px; font-size: 11px;">Clear All</button>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+              <tr style="background-color: var(--tab-bg); border-bottom: 1px solid var(--border);">
+                <th style="padding: 4px 8px; text-align: left;">Name</th>
+                <th style="padding: 4px 8px; text-align: left;">Value</th>
+              </tr>
+            </thead>
+            <tbody id="variables-table-body">
+              <tr><td colspan="2" style="text-align: center; color: var(--text-muted); padding: 12px;">No user variables defined.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </aside>
+
+      <!-- Center Workspace Stack -->
+      <main id="document-stack" class="workspace-center">
+        <!-- Document pages dynamically injected here (Start.mw, Untitled-1.mw, etc.) -->
+      </main>
+
+      <!-- Right Dock: Context Panel (Collapsed by default matching desktop) -->
+      <aside id="context-dock" class="context-dock collapsed">
+        <div class="dock-header">
+          <span>Context Panel</span>
+          <button id="btn-collapse-context-panel" class="dock-close-btn" title="Collapse">»</button>
+        </div>
+
+        <div class="context-scroll">
+          <!-- Card 1: Math Editor Shortcuts -->
+          <div class="context-card">
+            <div class="context-card-title">Math Editor Shortcuts</div>
+            <table class="shortcuts-table">
+              <tr><td class="sc-action">Evaluate:</td><td class="sc-key">Enter</td></tr>
+              <tr><td class="sc-action">Evaluate Inline:</td><td class="sc-key">Alt+Enter</td></tr>
+              <tr><td class="sc-action">Toggle Math/Text:</td><td class="sc-key">F5</td></tr>
+              <tr><td class="sc-action">Exit Fraction/Power:</td><td class="sc-key">→</td></tr>
+              <tr><td class="sc-action">Assignments:</td><td class="sc-key">a := b</td></tr>
+              <tr><td class="sc-action">Functions:</td><td class="sc-key">f := x -> x²</td></tr>
+              <tr><td class="sc-action">Equations:</td><td class="sc-key">x = y</td></tr>
+              <tr><td class="sc-action">Navigate Tabs:</td><td class="sc-key">Tab</td></tr>
+            </table>
+          </div>
+
+          <!-- Card 2: Active Target Expression Summary -->
+          <div class="context-card">
+            <div class="context-card-title">Active Target:</div>
+            <div id="context-target-expr" style="font-family: monospace; font-size: 11.5px; color: var(--accent); word-break: break-all;">No expression selected</div>
+          </div>
+
+          <!-- Card 3: Dynamic Context Operations -->
+          <div class="context-card">
+            <div class="context-card-title">Operations</div>
+            <div id="context-ops-container">
+              <p style="color: var(--text-muted); font-size: 11px;">Focus or select an expression to see context operations.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- 4. Sunken Segmented Status Bar -->
+    <footer class="desktop-statusbar">
+      <div id="status-msg-seg" class="status-segment status-msg">Ready</div>
+
+      <label class="status-segment clickable" style="gap: 4px;">
+        <input type="checkbox" id="status-editable-chk" checked />
+        <span>Editable</span>
+      </label>
+
+      <div class="status-segment">Default Profile</div>
+      <div id="status-path-seg" class="status-segment clickable" style="color: #dc2626; font-weight: bold;">Save Document</div>
+      <div id="status-memory-seg" class="status-segment">Memory: 142.50M</div>
+      <div id="status-time-seg" class="status-segment">Time: 0.00s</div>
+      <div id="status-decimal-seg" class="status-segment clickable">Decimal: <strong>,</strong></div>
+      <div id="status-zoom-seg" class="status-segment clickable">Zoom: 100%</div>
+      <div id="status-mode-seg" class="status-segment mode-badge">Start Page</div>
+    </footer>
+  </div>
+
+  <!-- 5. Modal Dialogs Container -->
+  <div id="modal-backdrop" class="modal-backdrop">
+    <!-- Dialog 1: Options & Preferences -->
+    <div id="dialog-options" class="modal-dialog" style="width: 680px; height: 520px; display: none;">
+      <div class="modal-header">
+        <span class="modal-title">⚙️ Options & Preferences</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="dialog-tabs-bar">
+        <button class="dialog-tab-btn active" data-pane="pane-opt-appearance">Appearance & Theme</button>
+        <button class="dialog-tab-btn" data-pane="pane-opt-calculation">Calculation & CAS</button>
+        <button class="dialog-tab-btn" data-pane="pane-opt-editor">Worksheet & Editor</button>
+        <button class="dialog-tab-btn" data-pane="pane-opt-shortcuts">Keyboard Shortcuts</button>
+      </div>
+      <div class="modal-body">
+        <div id="pane-opt-appearance" class="dialog-tab-pane active">
+          <div class="dialog-group-box">
+            <span class="group-box-title">Color Theme</span>
+            <div class="form-row">
+              <label><input type="radio" name="opt-theme" value="light" checked /> Light Mode (Maple Classic)</label>
+            </div>
+            <div class="form-row">
+              <label><input type="radio" name="opt-theme" value="dark" /> Dark Mode (Slate Dark Glass)</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-opt-calculation" class="dialog-tab-pane">
+          <div class="dialog-group-box">
+            <span class="group-box-title">Decimal Separator</span>
+            <div class="form-row">
+              <label><input type="radio" name="opt-decimal" value="," checked /> Comma ( , ) [European / Maple standard]</label>
+            </div>
+            <div class="form-row">
+              <label><input type="radio" name="opt-decimal" value="." /> Period ( . ) [US / UK standard]</label>
+            </div>
+          </div>
+
+          <div class="dialog-group-box">
+            <span class="group-box-title">Evaluation Precision</span>
+            <div class="form-row">
+              <span class="form-label">Float Digits:</span>
+              <input type="number" id="opt-precision" class="form-control" min="2" max="50" value="10" style="width: 70px;" />
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-opt-editor" class="dialog-tab-pane">
+          <div class="dialog-group-box">
+            <span class="group-box-title">Typography</span>
+            <div class="form-row">
+              <span class="form-label">Default Math Font:</span>
+              <select id="opt-font-family" class="form-control" style="width: 160px;">
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Arial">Arial</option>
+                <option value="Consolas">Consolas</option>
+                <option value="Cambria Math">Cambria Math</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <span class="form-label">Default Font Size:</span>
+              <select id="opt-font-size" class="form-control" style="width: 70px;">
+                <option value="10">10</option>
+                <option value="11">11</option>
+                <option value="12" selected>12</option>
+                <option value="14">14</option>
+                <option value="16">16</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="pane-opt-shortcuts" class="dialog-tab-pane">
+          <table class="shortcuts-table" style="font-size: 12px;">
+            <tr><td><strong>Evaluate active group:</strong></td><td class="sc-key">Enter</td></tr>
+            <tr><td><strong>Execute entire worksheet:</strong></td><td class="sc-key">Ctrl+Shift+Enter</td></tr>
+            <tr><td><strong>Toggle 2D Math / Text:</strong></td><td class="sc-key">F5</td></tr>
+            <tr><td><strong>New Worksheet:</strong></td><td class="sc-key">Ctrl+N</td></tr>
+            <tr><td><strong>Open Document:</strong></td><td class="sc-key">Ctrl+O</td></tr>
+            <tr><td><strong>Save Document:</strong></td><td class="sc-key">Ctrl+S</td></tr>
+            <tr><td><strong>Matrix Wizard:</strong></td><td class="sc-key">Ctrl+M</td></tr>
+            <tr><td><strong>Insert cell after:</strong></td><td class="sc-key">Ctrl+J</td></tr>
+            <tr><td><strong>Insert cell before:</strong></td><td class="sc-key">Ctrl+K</td></tr>
+            <tr><td><strong>Zoom In / Out:</strong></td><td class="sc-key">Ctrl++ / Ctrl+-</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-options-defaults" class="dialog-btn">Reset to Defaults</button>
+        <div style="flex: 1;"></div>
+        <button class="dialog-btn dialog-cancel-btn">Cancel</button>
+        <button id="btn-options-apply" class="dialog-btn primary">Apply</button>
+      </div>
+    </div>
+
+    <!-- Dialog 2: Matrix Wizard -->
+    <div id="dialog-matrix-wizard" class="modal-dialog" style="width: 480px; display: none;">
+      <div class="modal-header">
+        <span class="modal-title">✨ Matrix Wizard</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="matrix-wizard-controls">
+          <label>Rows:
+            <select id="matrix-rows-select" class="form-control" style="width: 55px; margin-left: 4px;">
+              <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option>
+              <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+            </select>
+          </label>
+          <label>Cols:
+            <select id="matrix-cols-select" class="form-control" style="width: 55px; margin-left: 4px;">
+              <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option>
+              <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="matrix-presets-bar">
+          <span style="font-size: 11px; font-weight: bold; margin-right: 4px;">Presets:</span>
+          <button class="dialog-btn matrix-preset-btn" data-preset="identity" style="height: 22px; font-size: 11px; min-width: 55px;">Identity</button>
+          <button class="dialog-btn matrix-preset-btn" data-preset="zeros" style="height: 22px; font-size: 11px; min-width: 50px;">Zeros</button>
+          <button class="dialog-btn matrix-preset-btn" data-preset="ones" style="height: 22px; font-size: 11px; min-width: 45px;">Ones</button>
+          <button class="dialog-btn matrix-preset-btn" data-preset="diagonal" style="height: 22px; font-size: 11px; min-width: 60px;">Diagonal</button>
+          <button class="dialog-btn matrix-preset-btn" data-preset="clear" style="height: 22px; font-size: 11px; min-width: 45px;">Clear</button>
+        </div>
+
+        <div class="matrix-grid-scroll" id="matrix-grid-container">
+          <!-- Dynamic editable table injected here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn dialog-cancel-btn">Cancel</button>
+        <button id="btn-matrix-insert" class="dialog-btn primary">Insert Matrix</button>
+      </div>
+    </div>
+
+    <!-- Dialog 3: About OpenMath -->
+    <div id="dialog-about" class="modal-dialog" style="width: 510px; display: none;">
+      <div class="modal-header">
+        <span class="modal-title">About OpenMath</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 24px;">
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <img src="./favicon.png" alt="OpenMath Logo" width="64" height="64" />
+          <div>
+            <h2 style="font-size: 20px; font-weight: bold; color: #0f172a; margin-bottom: 2px;">OpenMath</h2>
+            <p style="font-size: 11px; color: #64748b;">Desktop Symbolic & Numerical Computer Algebra System</p>
+          </div>
+        </div>
+        <hr class="start-page-sep" style="margin: 12px 0;" />
+        <p style="font-size: 12px; color: #334155; line-height: 1.4;">
+          Specialized for symbolic mathematics, engineering calculations, algebra, calculus, and linear programming.
+        </p>
+
+        <div class="start-page-dev-card" style="margin-top: 10px;">
+          <span class="start-page-dev-title">Developed by</span>
+          <div class="start-page-dev-links">
+            <a href="https://github.com/J2KJonas" target="_blank" rel="noopener noreferrer" class="start-dev-btn">
+              <span>J2KDevelop ↗</span>
+            </a>
+            <a href="https://github.com/elomarjc" target="_blank" rel="noopener noreferrer" class="start-dev-btn">
+              <span>Elomarstudio ↗</span>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn primary dialog-cancel-btn">OK</button>
+      </div>
+    </div>
+
+    <!-- Dialog 4: Help Topics -->
+    <div id="dialog-help-topics" class="modal-dialog" style="width: 720px; height: 500px; display: none;">
+      <div class="modal-header">
+        <span class="modal-title">📖 OpenMath Function Guide & Help Topics</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 10px;">
+        <input type="text" id="help-topics-search" class="toolbar-search-input" style="width: 100%; margin-bottom: 8px;" placeholder="Search function syntax (e.g. solve, diff, to_bin)..." />
+        <div class="help-topics-layout">
+          <div id="help-topics-list" class="help-topics-list"></div>
+          <div id="help-topic-detail" class="help-topic-detail"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn dialog-cancel-btn">Close</button>
+      </div>
+    </div>
+
+    <!-- Dialog 5: Export PDF -->
+    <div id="dialog-export-pdf" class="modal-dialog" style="width: 450px; display: none;">
+      <div class="modal-header">
+        <span class="modal-title">Export as PDF</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="font-size: 14px; font-weight: bold; margin-bottom: 4px;">PDF Export Options</h4>
+        <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.4;">
+          Choose whether collapsed exercises and sections should be unfolded so that all contents are included in the PDF:
+        </p>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 8px 0; cursor: pointer;">
+          <input type="checkbox" id="chk-unfold-exercises" checked />
+          <span>Unfold and show all exercises / sections</span>
+        </label>
+        <p style="font-size: 11px; color: var(--text-muted); margin-left: 24px; line-height: 1.4;">
+          When checked, all exercises will be unfolded so that problem steps, math equations, and results are printed.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn dialog-cancel-btn">Cancel</button>
+        <button id="btn-confirm-export-pdf" class="dialog-btn primary">Export as PDF...</button>
+      </div>
+    </div>
+
+    <!-- Dialog 6: Alert / Notification -->
+    <div id="dialog-alert" class="modal-dialog" style="width: 440px; display: none;">
+      <div class="modal-header">
+        <span id="dialog-alert-title" class="modal-title">OpenMath</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p id="dialog-alert-message" style="font-size: 13px; color: var(--text-primary); line-height: 1.5;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn primary dialog-cancel-btn">OK</button>
+      </div>
+    </div>
+
+    <!-- Dialog 7: Prompt / Input -->
+    <div id="dialog-prompt" class="modal-dialog" style="width: 420px; display: none;">
+      <div class="modal-header">
+        <span id="dialog-prompt-title" class="modal-title">OpenMath</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <p id="dialog-prompt-message" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+        <input type="text" id="dialog-prompt-input" class="form-control" style="width: 100%;" />
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn dialog-cancel-btn">Cancel</button>
+        <button id="btn-dialog-prompt-ok" class="dialog-btn primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Application Script -->
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

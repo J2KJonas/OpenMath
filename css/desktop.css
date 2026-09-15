@@ -1,0 +1,1149 @@
+/* OpenMath Desktop Application Frame, Menus, Toolbars, Docks, and Status Bar */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* App Outer Desktop Window */
+#app-window {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-main);
+}
+
+/* 0. Window Title Bar */
+.window-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px;
+  cursor: default;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-window-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.window-title-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.win-btn {
+  width: 24px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.win-btn:hover {
+  background-color: var(--btn-hover-bg);
+  color: var(--text-primary);
+}
+
+.win-btn.win-close:hover {
+  background-color: #ef4444;
+  color: #ffffff;
+}
+
+/* 1. Traditional MenuBar */
+.desktop-menubar {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  padding: 1px 4px;
+  height: 24px;
+  position: relative;
+  z-index: 1000;
+}
+
+.menu-item {
+  position: relative;
+}
+
+.menu-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.menu-trigger:hover,
+.menu-item.active .menu-trigger {
+  background-color: var(--accent-light);
+  color: var(--accent);
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 2000;
+}
+
+.menu-item.active .dropdown-menu {
+  display: block;
+}
+
+.menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--menu-text);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+  white-space: nowrap;
+}
+
+.menu-action:hover {
+  background-color: var(--menu-hover-bg);
+  color: var(--menu-hover-text);
+}
+
+.menu-action.disabled {
+  color: var(--text-muted);
+  cursor: default;
+  pointer-events: none;
+}
+
+.menu-action .shortcut {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 18px;
+}
+
+.menu-action .checkmark {
+  display: inline-block;
+  width: 14px;
+  font-weight: bold;
+  color: var(--accent);
+  margin-right: 4px;
+}
+
+.menu-sep {
+  height: 1px;
+  background-color: var(--menu-sep);
+  margin: 4px 6px;
+}
+
+/* Nested submenus */
+.has-submenu {
+  position: relative;
+}
+
+.has-submenu .submenu-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 12px;
+}
+
+.submenu {
+  display: none;
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  min-width: 190px;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  z-index: 2100;
+}
+
+.has-submenu:hover > .submenu {
+  display: block;
+}
+
+/* 2. Toolbars Container */
+.toolbars-container {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Tier 1: Main Toolbar */
+.main-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--border);
+  min-height: 28px;
+  overflow-x: auto;
+}
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 2px 8px;
+  background-color: var(--btn-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+}
+
+.tb-btn:hover {
+  background-color: var(--btn-hover-bg);
+  color: var(--text-primary);
+}
+
+.tb-btn:active {
+  background-color: var(--btn-pressed-bg);
+}
+
+.tb-btn.btn-eval {
+  background-color: #f0fdf4;
+  color: #15803d;
+  border-color: #86efac;
+  font-weight: bold;
+}
+
+.tb-btn.btn-eval:hover {
+  background-color: #dcfce7;
+  border-color: #4ade80;
+}
+
+.tb-btn.btn-eval-all {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  font-weight: bold;
+}
+
+.tb-btn.btn-eval-all:hover {
+  background-color: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.tb-btn.btn-stop {
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+  font-weight: bold;
+}
+
+.tb-btn.btn-stop:hover {
+  background-color: #fee2e2;
+  border-color: #f87171;
+}
+
+.tb-sep {
+  width: 1px;
+  height: 18px;
+  background-color: var(--border);
+  margin: 0 4px;
+}
+
+.search-box-wrapper {
+  position: relative;
+  margin-left: 6px;
+}
+
+.toolbar-search-input {
+  width: 270px;
+  height: 24px;
+  padding: 2px 8px;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  outline: none;
+}
+
+.toolbar-search-input:focus {
+  border-color: var(--border-focus);
+}
+
+.search-autocomplete-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+  margin-top: 2px;
+  padding: 2px;
+  z-index: 3000;
+}
+
+.search-autocomplete-list.open {
+  display: block;
+}
+
+.autocomplete-item {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--menu-text);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.autocomplete-item:hover {
+  background-color: var(--menu-hover-bg);
+  color: var(--menu-hover-text);
+}
+
+/* Tier 2: Document Tabs Toolbar */
+.tab-bar-toolbar {
+  display: flex;
+  align-items: center;
+  background-color: var(--tab-bg);
+  border-bottom: 1px solid var(--border);
+  height: 28px;
+  padding: 2px 4px 0 4px;
+  overflow-x: auto;
+}
+
+.tabs-container {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  gap: 2px;
+}
+
+.doc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  min-width: 120px;
+  max-width: 200px;
+  padding: 4px 10px 4px 14px;
+  background-color: var(--tab-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.doc-tab:hover {
+  background-color: var(--tab-hover-bg);
+}
+
+.doc-tab.active {
+  background-color: var(--tab-active-bg);
+  color: var(--text-primary);
+  font-weight: bold;
+  border-top: 2px solid var(--accent);
+  border-bottom: 1px solid var(--tab-active-bg);
+  margin-bottom: -1px;
+  z-index: 2;
+}
+
+.tab-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.tab-close-btn:hover {
+  background-color: #fee2e2;
+  border-color: #f87171;
+  color: #dc2626;
+}
+
+.tab-add-btn,
+.tab-overflow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  margin-bottom: 2px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  outline: none;
+}
+
+.tab-add-btn:hover,
+.tab-overflow-btn:hover {
+  background-color: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Tier 3: Context Bar Toolbar */
+.context-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  min-height: 28px;
+  overflow-x: auto;
+}
+
+.mode-pill {
+  height: 22px;
+  padding: 2px 8px;
+  background-color: var(--btn-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--btn-border);
+  border-radius: 2px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mode-pill.active {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #38bdf8;
+  font-weight: bold;
+}
+
+.body.theme-dark .mode-pill.active {
+  background-color: #1e3a5f;
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.font-combo,
+.font-size-combo {
+  height: 22px;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 1px 4px;
+  outline: none;
+}
+
+.font-size-combo {
+  width: 54px;
+}
+
+.fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.fmt-btn:hover {
+  background-color: var(--btn-hover-bg);
+  border-color: var(--accent);
+}
+
+.fmt-btn.active {
+  background-color: var(--accent-light);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.swatch-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  padding: 1px;
+}
+
+.swatch-btn:hover {
+  background-color: var(--btn-hover-bg);
+  border-color: var(--accent);
+}
+
+.swatch-icon-letter {
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.swatch-color-bar {
+  width: 18px;
+  height: 4px;
+  background-color: #000000;
+  border-radius: 1px;
+  margin-top: 1px;
+}
+
+.highlight-swatch-bar {
+  background-color: #facc15;
+}
+
+/* Color Picker Popup Menu */
+.color-palette-popup {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 170px;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 6px;
+  z-index: 4000;
+}
+
+.color-palette-popup.open {
+  display: block;
+}
+
+.color-grid-20 {
+  display: grid;
+  grid-template-columns: repeat(5, 24px);
+  gap: 5px;
+  margin: 6px 0;
+  justify-content: center;
+}
+
+.color-cell {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.color-cell:hover {
+  border: 2px solid var(--accent);
+}
+
+/* Section Dropdown Split Button */
+.section-split-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  padding: 0;
+}
+
+.section-split-main {
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.section-split-arrow {
+  padding: 2px 5px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+/* 3. Main Body Three-Pane Layout */
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-main);
+}
+
+/* Left Dock: Palettes */
+.palette-dock {
+  width: 275px;
+  min-width: 220px;
+  max-width: 480px;
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--dock-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 26px;
+  background-color: var(--dock-title-bg);
+  border-bottom: 1px solid var(--dock-border);
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.dock-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.dock-close-btn:hover {
+  background-color: var(--btn-hover-bg);
+  color: var(--text-primary);
+}
+
+/* Dock Tabs Bar */
+.dock-tabs-bar {
+  display: flex;
+  align-items: center;
+  background-color: var(--tab-bg);
+  border-bottom: 1px solid var(--border);
+  height: 24px;
+}
+
+.dock-tab-btn {
+  flex: 1;
+  height: 100%;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.dock-tab-btn:last-child {
+  border-right: none;
+}
+
+.dock-tab-btn.active {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: bold;
+  border-bottom: 1px solid var(--bg-surface);
+}
+
+.dock-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* Accordion Sections in Palettes */
+.accordion-group {
+  margin-bottom: 4px;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  background-color: #e6e8ec;
+  color: #2b2f38;
+  border: 1px solid #c8ccd2;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  text-align: left;
+}
+
+body.theme-dark .accordion-header {
+  background-color: #1c2433;
+  color: #f8fafc;
+  border-color: #2b384c;
+}
+
+.accordion-header:hover {
+  background-color: #dbe0e8;
+}
+
+body.theme-dark .accordion-header:hover {
+  background-color: #233348;
+}
+
+.accordion-arrow {
+  display: inline-block;
+  width: 14px;
+  font-size: 9px;
+  margin-right: 4px;
+}
+
+.accordion-body {
+  display: block;
+  padding: 4px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-top: none;
+  border-radius: 0 0 2px 2px;
+}
+
+.accordion-body.collapsed {
+  display: none;
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 3px;
+}
+
+.palette-cell-btn {
+  height: 28px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.palette-cell-btn:hover {
+  background-color: var(--btn-hover-bg);
+  border-color: var(--accent);
+}
+
+.palette-cell-btn.wizard-btn {
+  grid-column: 1 / -1;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  font-weight: bold;
+  height: 26px;
+}
+
+body.theme-dark .palette-cell-btn.wizard-btn {
+  background-color: #1e3a5f;
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+/* Center Workspace Stack */
+.workspace-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg-canvas);
+  position: relative;
+}
+
+/* Right Dock: Context Panel */
+.context-dock {
+  width: 260px;
+  min-width: 220px;
+  max-width: 450px;
+  background-color: var(--bg-surface);
+  border-left: 1px solid var(--dock-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.context-dock.collapsed {
+  display: none;
+}
+
+.context-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.context-card {
+  background-color: var(--bg-cell);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.context-card-title {
+  font-size: 11px;
+  font-weight: bold;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.shortcuts-table {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+
+.shortcuts-table td {
+  padding: 3px 2px;
+}
+
+.shortcuts-table .sc-action {
+  color: var(--text-secondary);
+}
+
+.shortcuts-table .sc-key {
+  font-family: monospace;
+  font-weight: bold;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.context-ops-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-op-btn {
+  width: 100%;
+  padding: 4px 8px;
+  background-color: var(--btn-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-op-btn:hover {
+  background-color: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 4. Sunken Segmented Status Bar */
+.desktop-statusbar {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  background-color: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  gap: 4px;
+  z-index: 100;
+}
+
+.status-segment {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background-color: var(--status-label-bg);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.status-segment.status-msg {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding-left: 4px;
+}
+
+.status-segment.clickable {
+  cursor: pointer;
+}
+
+.status-segment.clickable:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.status-segment.mode-badge {
+  font-weight: bold;
+  color: #1e3a8a;
+}
+
+body.theme-dark .status-segment.mode-badge {
+  color: #38bdf8;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+  border-left: 1px solid var(--scrollbar-border);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-handle);
+  border-radius: 4px;
+  border: 2px solid var(--scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-handle-hover);
+}
+
+/* Formulas Tab Cards (matching desktop ui/palette_panel.py FormulaCard) */
+.formulas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formula-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.formula-card:hover {
+  background-color: var(--btn-hover-bg);
+  border-color: var(--accent);
+}
+
+.formula-card-title {
+  font-size: 11.5px;
+  font-weight: bold;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.formula-card-code {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 10.5px;
+  color: var(--accent);
+  background-color: var(--bg-input);
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-light);
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.formula-card-desc {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+/* Print Stylesheet for 1:1 PDF Export */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .window-titlebar,
+  .desktop-menubar,
+  .toolbars-container,
+  .palette-dock,
+  .context-dock,
+  .desktop-statusbar,
+  .tab-close-btn,
+  .tab-add-btn,
+  .tab-overflow-btn,
+  .modal-backdrop,
+  .worksheet-click-spacer {
+    display: none !important;
+  }
+  #app-window,
+  .app-body,
+  .workspace-center,
+  .workspace-document-page,
+  .worksheet-scroll-container {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background: transparent !important;
+    transform: none !important;
+  }
+  .worksheet-canvas {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: relative !important;
+    background: transparent !important;
+    transform: none !important;
+  }
+  .section-toggle-btn {
+    display: inline-flex !important;
+    color: #475569 !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .scope-overlay-canvas {
+    display: block !important;
+  }
+  .worksheet-cell {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 12px !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .worksheet-cell.active,
+  .worksheet-cell.selected {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  .cell-bracket-bar {
+    display: none !important;
+  }
+  .cell-prompt {
+    display: none !important;
+  }
+  .cell-output-math {
+    color: #0000aa !important;
+  }
+}
+
+/* Background CAS Init Spinner in Status Bar */
+.cas-init-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.8px solid #94a3b8;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+/* Drag-and-Drop Active Overlay */
+.drop-target-active {
+  outline: 2px dashed #2563eb !important;
+  outline-offset: -2px;
+  background-color: rgba(37, 99, 235, 0.04) !important;
+}
+
