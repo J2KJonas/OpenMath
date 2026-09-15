@@ -514,7 +514,6 @@ body.theme-dark .error-suggestion-btn {
   .status-bar,
   .context-menu,
   .modal-overlay,
-  .section-bracket-canvas,
   .start-page-view,
   .worksheet-click-spacer {
     display: none !important;
@@ -546,26 +545,50 @@ body.theme-dark .error-suggestion-btn {
     box-shadow: none !important;
     border: none !important;
     background: #ffffff !important;
+    position: relative !important;
+  }
+
+  .scope-overlay-canvas {
+    display: block !important;
+    position: absolute !important;
+  }
+
+  .section-toggle-btn {
+    display: inline-flex !important;
+    color: #475569 !important;
+    background: transparent !important;
+    border: none !important;
   }
 
   .worksheet-cell {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     margin-bottom: 8px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .worksheet-cell.active,
+  .worksheet-cell.selected {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
   .cell-bracket-bar {
-    border-left: 2px solid #555555 !important;
+    display: none !important;
   }
 
   .cell-prompt {
-    color: #b22222 !important;
+    display: none !important;
   }
 
   .cell-output {
     color: #0000aa !important;
   }
 
+  .cell-input-edit,
   .cell-input-editor {
     border: none !important;
     outline: none !important;

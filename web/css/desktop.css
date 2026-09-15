@@ -1070,16 +1070,14 @@ body.theme-dark .status-segment.mode-badge {
   .tab-add-btn,
   .tab-overflow-btn,
   .modal-backdrop,
-  .worksheet-click-spacer,
-  .section-toggle-btn {
+  .worksheet-click-spacer {
     display: none !important;
   }
   #app-window,
   .app-body,
   .workspace-center,
   .workspace-document-page,
-  .worksheet-scroll-container,
-  .worksheet-canvas {
+  .worksheet-scroll-container {
     width: 100% !important;
     height: auto !important;
     overflow: visible !important;
@@ -1087,10 +1085,35 @@ body.theme-dark .status-segment.mode-badge {
     background: transparent !important;
     transform: none !important;
   }
+  .worksheet-canvas {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: relative !important;
+    background: transparent !important;
+    transform: none !important;
+  }
+  .section-toggle-btn {
+    display: inline-flex !important;
+    color: #475569 !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .scope-overlay-canvas {
+    display: block !important;
+  }
   .worksheet-cell {
     page-break-inside: avoid;
     break-inside: avoid;
     margin-bottom: 12px !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border: none !important;
+  }
+  .worksheet-cell.active,
+  .worksheet-cell.selected {
+    background: transparent !important;
+    border: none !important;
     box-shadow: none !important;
   }
   .cell-bracket-bar {
