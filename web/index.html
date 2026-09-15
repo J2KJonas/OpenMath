@@ -572,17 +572,257 @@
 
         <!-- Tab 2: Formulas -->
         <div id="dock-tab-formulas" class="dock-tab-content" style="display:none;">
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <div class="context-card">
-              <div class="context-card-title">Algebra & Geometry</div>
-              <button class="dialog-btn formula-insert-btn" data-formula="solve(a*x^2 + b*x + c = 0, x)" style="width:100%; text-align:left; font-size:11px; margin-bottom:4px;">Quadratic Formula</button>
-              <button class="dialog-btn formula-insert-btn" data-formula="a^2 + b^2 = c^2" style="width:100%; text-align:left; font-size:11px;">Pythagorean Theorem</button>
+          <input type="text" id="formulas-search-input" class="toolbar-search-input" style="width: 100%; margin-bottom: 6px;" placeholder="🔍 Search formulas & plots..." autocomplete="off" />
+
+          <!-- Category 1: Plotting Formulas -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Plotting Formulas</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="plot(2 * x + 3, x = -10..10)" data-title="Linear Line (Single)" data-desc="2D straight line with slope and y-intercept">
+                  <div class="formula-card-title">Linear Line (Single)</div>
+                  <div class="formula-card-code">plot(2 · x + 3, x = -10..10)</div>
+                  <div class="formula-card-desc">2D straight line with slope and y-intercept</div>
+                </div>
+                <div class="formula-card" data-formula="plot([2 * x + 1, -x + 4, 0.5 * x - 2], x = -5..5)" data-title="Multiple Lines" data-desc="Compare multiple linear curves on the same plot">
+                  <div class="formula-card-title">Multiple Lines</div>
+                  <div class="formula-card-code">plot([2 · x + 1, -x + 4, 0.5 · x - 2], x = -5..5)</div>
+                  <div class="formula-card-desc">Compare multiple linear curves on the same plot</div>
+                </div>
+                <div class="formula-card" data-formula="plot(x^2 - 4 * x + 3, x = -2..6)" data-title="Quadratic / Parabola" data-desc="Parabola with vertex and roots">
+                  <div class="formula-card-title">Quadratic / Parabola</div>
+                  <div class="formula-card-code">plot(x² - 4 · x + 3, x = -2..6)</div>
+                  <div class="formula-card-desc">Parabola with vertex and roots</div>
+                </div>
+                <div class="formula-card" data-formula="plot(x^3 - 3 * x, x = -2.5..2.5)" data-title="Cubic Polynomial" data-desc="3rd degree polynomial curve">
+                  <div class="formula-card-title">Cubic Polynomial</div>
+                  <div class="formula-card-code">plot(x³ - 3 · x, x = -2.5..2.5)</div>
+                  <div class="formula-card-desc">3rd degree polynomial curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot(sin(x), x = -2 * pi .. 2 * pi)" data-title="Sine Wave" data-desc="Periodic harmonic sine wave">
+                  <div class="formula-card-title">Sine Wave</div>
+                  <div class="formula-card-code">plot(sin(x), x = -2 · π .. 2 · π)</div>
+                  <div class="formula-card-desc">Periodic harmonic sine wave</div>
+                </div>
+                <div class="formula-card" data-formula="plot(cos(x), x = -2 * pi .. 2 * pi)" data-title="Cosine Wave" data-desc="Periodic harmonic cosine wave">
+                  <div class="formula-card-title">Cosine Wave</div>
+                  <div class="formula-card-code">plot(cos(x), x = -2 · π .. 2 · π)</div>
+                  <div class="formula-card-desc">Periodic harmonic cosine wave</div>
+                </div>
+                <div class="formula-card" data-formula="plot(exp(-0.2 * x) * cos(2 * x), x = 0..20)" data-title="Damped Oscillation" data-desc="Decaying sinusoidal oscillation curve">
+                  <div class="formula-card-title">Damped Oscillation</div>
+                  <div class="formula-card-code">plot(exp(-0.2 · x) · cos(2 · x), x = 0..20)</div>
+                  <div class="formula-card-desc">Decaying sinusoidal oscillation curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot(exp(-x/2), x = 0..10)" data-title="Exponential Decay" data-desc="Exponential decay function">
+                  <div class="formula-card-title">Exponential Decay</div>
+                  <div class="formula-card-code">plot(exp(-x/2), x = 0..10)</div>
+                  <div class="formula-card-desc">Exponential decay function</div>
+                </div>
+                <div class="formula-card" data-formula="plot(1 / (x^2 + 1), x = -5..5)" data-title="Rational Curve" data-desc="Bell-shaped rational curve">
+                  <div class="formula-card-title">Rational Curve</div>
+                  <div class="formula-card-code">plot(1 / (x² + 1), x = -5..5)</div>
+                  <div class="formula-card-desc">Bell-shaped rational curve</div>
+                </div>
+                <div class="formula-card" data-formula="plot([cos(t), sin(t)], t = 0 .. 2 * pi)" data-title="Parametric Circle" data-desc="2D parametric circular trajectory">
+                  <div class="formula-card-title">Parametric Circle</div>
+                  <div class="formula-card-code">plot([cos(t), sin(t)], t = 0 .. 2 · π)</div>
+                  <div class="formula-card-desc">2D parametric circular trajectory</div>
+                </div>
+                <div class="formula-card" data-formula="plot(cos(4 * theta), theta = 0 .. 2 * pi)" data-title="Polar Rose" data-desc="4-petal polar rose plot">
+                  <div class="formula-card-title">Polar Rose</div>
+                  <div class="formula-card-code">plot(cos(4 · theta), theta = 0 .. 2 · π)</div>
+                  <div class="formula-card-desc">4-petal polar rose plot</div>
+                </div>
+                <div class="formula-card" data-formula="polygonOmråde([x >= 0, y >= 0, x + y <= 10], x = 0..12, y = 0..12)" data-title="Feasible Region (LP)" data-desc="Linear programming feasible polygon">
+                  <div class="formula-card-title">Feasible Region (LP)</div>
+                  <div class="formula-card-code">polygonOmråde([x >= 0, y >= 0, x + y <= 10], x = 0..12, y = 0..12)</div>
+                  <div class="formula-card-desc">Linear programming feasible polygon</div>
+                </div>
+                <div class="formula-card" data-formula="LPplot(30 * x + 20 * y, [x >= 0, y >= 0, x + y <= 10], [100, 200, 300])" data-title="LP Level Curves" data-desc="Optimization objective level lines">
+                  <div class="formula-card-title">LP Level Curves</div>
+                  <div class="formula-card-code">LPplot(30 · x + 20 · y, [x >= 0, y >= 0, x + y <= 10], [100, 200, 300])</div>
+                  <div class="formula-card-desc">Optimization objective level lines</div>
+                </div>
+                <div class="formula-card" data-formula="plot3d(sin(x) * cos(y), x = -pi .. pi, y = -pi .. pi)" data-title="3D Surface Plot" data-desc="3D bivariate surface plot">
+                  <div class="formula-card-title">3D Surface Plot</div>
+                  <div class="formula-card-code">plot3d(sin(x) · cos(y), x = -π .. π, y = -π .. π)</div>
+                  <div class="formula-card-desc">3D bivariate surface plot</div>
+                </div>
+              </div>
             </div>
-            <div class="context-card">
-              <div class="context-card-title">Electronics & Physics</div>
-              <button class="dialog-btn formula-insert-btn" data-formula="V := I * R" style="width:100%; text-align:left; font-size:11px; margin-bottom:4px;">Ohm's Law (V = I·R)</button>
-              <button class="dialog-btn formula-insert-btn" data-formula="P := V * I" style="width:100%; text-align:left; font-size:11px; margin-bottom:4px;">Electrical Power (P = V·I)</button>
-              <button class="dialog-btn formula-insert-btn" data-formula="fc := 1 / (2 * pi * R * C)" style="width:100%; text-align:left; font-size:11px;">RC Cutoff Frequency</button>
+          </div>
+
+          <!-- Category 2: Embedded & Hardware Formulas -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Embedded & Hardware</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="V := I * R" data-title="Ohm's Law" data-desc="Voltage, current, and resistance: V = I · R">
+                  <div class="formula-card-title">Ohm's Law</div>
+                  <div class="formula-card-code">V := I · R</div>
+                  <div class="formula-card-desc">Voltage, current, and resistance: V = I · R</div>
+                </div>
+                <div class="formula-card" data-formula="voltage_divider(5.0, 10000, 4700)" data-title="Voltage Divider" data-desc="Calculate Vout from Vin, R1, and R2">
+                  <div class="formula-card-title">Voltage Divider</div>
+                  <div class="formula-card-code">voltage_divider(5.0, 10000, 4700)</div>
+                  <div class="formula-card-desc">Calculate Vout from Vin, R1, and R2</div>
+                </div>
+                <div class="formula-card" data-formula="R_eq := (R_1 * R_2) / (R_1 + R_2)" data-title="Parallel Resistors" data-desc="Equivalent resistance of parallel pair">
+                  <div class="formula-card-title">Parallel Resistors</div>
+                  <div class="formula-card-code">R_eq := (R_1 · R_2) / (R_1 + R_2)</div>
+                  <div class="formula-card-desc">Equivalent resistance of parallel pair</div>
+                </div>
+                <div class="formula-card" data-formula="rc_cutoff(10*kOhm, 100*nF)" data-title="RC Low-Pass Cutoff" data-desc="fc = 1 / (2 · pi · R · C)">
+                  <div class="formula-card-title">RC Low-Pass Cutoff</div>
+                  <div class="formula-card-code">rc_cutoff(10 · kOhm, 100 · nF)</div>
+                  <div class="formula-card-desc">fc = 1 / (2 · π · R · C)</div>
+                </div>
+                <div class="formula-card" data-formula="tau := R * C" data-title="RC Time Constant" data-desc="Step response time constant tau = R · C">
+                  <div class="formula-card-title">RC Time Constant</div>
+                  <div class="formula-card-code">tau := R · C</div>
+                  <div class="formula-card-desc">Step response time constant tau = R · C</div>
+                </div>
+                <div class="formula-card" data-formula="adc_volt(3.3, 3.3, 12)" data-title="ADC Voltage to Count" data-desc="Convert analog volts to N-bit digital integer">
+                  <div class="formula-card-title">ADC Voltage to Count</div>
+                  <div class="formula-card-code">adc_volt(3.3, 3.3, 12)</div>
+                  <div class="formula-card-desc">Convert analog volts to N-bit digital integer</div>
+                </div>
+                <div class="formula-card" data-formula="adc_raw(2048, 3.3, 12)" data-title="ADC Count to Voltage" data-desc="Convert raw digital count to measured volts">
+                  <div class="formula-card-title">ADC Count to Voltage</div>
+                  <div class="formula-card-code">adc_raw(2048, 3.3, 12)</div>
+                  <div class="formula-card-desc">Convert raw digital count to measured volts</div>
+                </div>
+                <div class="formula-card" data-formula="ubrr_calc(72*MHz, 115200)" data-title="UART Baud Divisor" data-desc="Calculate UART clock prescaler register">
+                  <div class="formula-card-title">UART Baud Divisor</div>
+                  <div class="formula-card-code">ubrr_calc(72 · MHz, 115200)</div>
+                  <div class="formula-card-desc">Calculate UART clock prescaler register</div>
+                </div>
+                <div class="formula-card" data-formula="timer_calc(72*MHz, 1000)" data-title="Timer ARR Prescaler" data-desc="Timer auto-reload & prescaler for frequency">
+                  <div class="formula-card-title">Timer ARR Prescaler</div>
+                  <div class="formula-card-code">timer_calc(72 · MHz, 1000)</div>
+                  <div class="formula-card-desc">Timer auto-reload & prescaler for frequency</div>
+                </div>
+                <div class="formula-card" data-formula="bit_set(0x00, 3)" data-title="Bit Set" data-desc="Set bit n in register: reg | (1 << bit)">
+                  <div class="formula-card-title">Bit Set</div>
+                  <div class="formula-card-code">bit_set(0x00, 3)</div>
+                  <div class="formula-card-desc">Set bit n in register: reg | (1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_clear(0xFF, 3)" data-title="Bit Clear" data-desc="Clear bit n in register: reg & ~(1 << bit)">
+                  <div class="formula-card-title">Bit Clear</div>
+                  <div class="formula-card-code">bit_clear(0xFF, 3)</div>
+                  <div class="formula-card-desc">Clear bit n in register: reg &amp; ~(1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_toggle(0x00, 2)" data-title="Bit Toggle" data-desc="Toggle bit n in register: reg ^ (1 << bit)">
+                  <div class="formula-card-title">Bit Toggle</div>
+                  <div class="formula-card-code">bit_toggle(0x00, 2)</div>
+                  <div class="formula-card-desc">Toggle bit n in register: reg ^ (1 &lt;&lt; bit)</div>
+                </div>
+                <div class="formula-card" data-formula="bit_field(0xABCD, 4, 8)" data-title="Extract Bitfield" data-desc="Extract bits at given offset and width">
+                  <div class="formula-card-title">Extract Bitfield</div>
+                  <div class="formula-card-code">bit_field(0xABCD, 4, 8)</div>
+                  <div class="formula-card-desc">Extract bits at given offset and width</div>
+                </div>
+                <div class="formula-card" data-formula="to_bin(0xA5, 8)" data-title="Binary Representation" data-desc="Format integer as binary bit string">
+                  <div class="formula-card-title">Binary Representation</div>
+                  <div class="formula-card-code">to_bin(0xA5, 8)</div>
+                  <div class="formula-card-desc">Format integer as binary bit string</div>
+                </div>
+                <div class="formula-card" data-formula="to_hex(165, 8)" data-title="Hex Representation" data-desc="Format integer as hexadecimal string">
+                  <div class="formula-card-title">Hex Representation</div>
+                  <div class="formula-card-code">to_hex(165, 8)</div>
+                  <div class="formula-card-desc">Format integer as hexadecimal string</div>
+                </div>
+                <div class="formula-card" data-formula="two_comp_repr(-42, 8)" data-title="Two's Complement" data-desc="Signed 2's complement representation">
+                  <div class="formula-card-title">Two's Complement</div>
+                  <div class="formula-card-code">two_comp_repr(-42, 8)</div>
+                  <div class="formula-card-desc">Signed 2's complement representation</div>
+                </div>
+                <div class="formula-card" data-formula="P := I^2 * R" data-title="Electric Power (P = I²R)" data-desc="Electrical power dissipated in resistor">
+                  <div class="formula-card-title">Electric Power (P = I²R)</div>
+                  <div class="formula-card-code">P := I² · R</div>
+                  <div class="formula-card-desc">Electrical power dissipated in resistor</div>
+                </div>
+                <div class="formula-card" data-formula="E := (1/2) * C * V^2" data-title="Capacitor Energy" data-desc="Stored electrical energy in joules">
+                  <div class="formula-card-title">Capacitor Energy</div>
+                  <div class="formula-card-code">E := (1/2) · C · V²</div>
+                  <div class="formula-card-desc">Stored electrical energy in joules</div>
+                </div>
+                <div class="formula-card" data-formula="XL := 2 * pi * f * L" data-title="Inductive Reactance (XL)" data-desc="AC impedance of inductor in ohms">
+                  <div class="formula-card-title">Inductive Reactance (XL)</div>
+                  <div class="formula-card-code">XL := 2 · π · f · L</div>
+                  <div class="formula-card-desc">AC impedance of inductor in ohms</div>
+                </div>
+                <div class="formula-card" data-formula="XC := 1 / (2 * pi * f * C)" data-title="Capacitive Reactance (XC)" data-desc="AC impedance of capacitor in ohms">
+                  <div class="formula-card-title">Capacitive Reactance (XC)</div>
+                  <div class="formula-card-code">XC := 1 / (2 · π · f · C)</div>
+                  <div class="formula-card-desc">AC impedance of capacitor in ohms</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category 3: Calculus & Algebra -->
+          <div class="accordion-group formula-category-group">
+            <button class="accordion-header"><span class="accordion-arrow">▼</span>Calculus & Algebra</button>
+            <div class="accordion-body">
+              <div class="formulas-list">
+                <div class="formula-card" data-formula="diff(f(x), x)" data-title="Derivative" data-desc="Differentiate f(x) with respect to x">
+                  <div class="formula-card-title">Derivative</div>
+                  <div class="formula-card-code">diff(f(x), x)</div>
+                  <div class="formula-card-desc">Differentiate f(x) with respect to x</div>
+                </div>
+                <div class="formula-card" data-formula="integrate(f(x), (x, a, b))" data-title="Definite Integral" data-desc="Definite Riemann integral from a to b">
+                  <div class="formula-card-title">Definite Integral</div>
+                  <div class="formula-card-code">integrate(f(x), (x, a, b))</div>
+                  <div class="formula-card-desc">Definite Riemann integral from a to b</div>
+                </div>
+                <div class="formula-card" data-formula="integrate(f(x), x)" data-title="Indefinite Integral" data-desc="Antiderivative of f(x)">
+                  <div class="formula-card-title">Indefinite Integral</div>
+                  <div class="formula-card-code">integrate(f(x), x)</div>
+                  <div class="formula-card-desc">Antiderivative of f(x)</div>
+                </div>
+                <div class="formula-card" data-formula="Sum(k^2, (k, 1, n))" data-title="Summation" data-desc="Sum of terms from k=1 to n">
+                  <div class="formula-card-title">Summation</div>
+                  <div class="formula-card-code">Sum(k², (k, 1, n))</div>
+                  <div class="formula-card-desc">Sum of terms from k=1 to n</div>
+                </div>
+                <div class="formula-card" data-formula="Product(k, (k, 1, n))" data-title="Product" data-desc="Product of terms from k=1 to n">
+                  <div class="formula-card-title">Product</div>
+                  <div class="formula-card-code">Product(k, (k, 1, n))</div>
+                  <div class="formula-card-desc">Product of terms from k=1 to n</div>
+                </div>
+                <div class="formula-card" data-formula="sqrt(x^2 + 1)" data-title="Square Root" data-desc="Square root radical">
+                  <div class="formula-card-title">Square Root</div>
+                  <div class="formula-card-code">sqrt(x² + 1)</div>
+                  <div class="formula-card-desc">Square root radical</div>
+                </div>
+                <div class="formula-card" data-formula="log(x, 10)" data-title="Base-10 Logarithm" data-desc="Common logarithm base 10">
+                  <div class="formula-card-title">Base-10 Logarithm</div>
+                  <div class="formula-card-code">log(x, 10)</div>
+                  <div class="formula-card-desc">Common logarithm base 10</div>
+                </div>
+                <div class="formula-card" data-formula="solve(f(x) = 0, x)" data-title="Solve Equation" data-desc="Solve algebraic equation for x">
+                  <div class="formula-card-title">Solve Equation</div>
+                  <div class="formula-card-code">solve(f(x) = 0, x)</div>
+                  <div class="formula-card-desc">Solve algebraic equation for x</div>
+                </div>
+                <div class="formula-card" data-formula="solve([x + y = 10, 2 * x - y = 4], [x, y])" data-title="Solve System" data-desc="Solve system of simultaneous equations">
+                  <div class="formula-card-title">Solve System</div>
+                  <div class="formula-card-code">solve([x + y = 10, 2 · x - y = 4], [x, y])</div>
+                  <div class="formula-card-desc">Solve system of simultaneous equations</div>
+                </div>
+                <div class="formula-card" data-formula="taylor(f(x), x, 0, 5)" data-title="Taylor Series" data-desc="Taylor polynomial expansion">
+                  <div class="formula-card-title">Taylor Series</div>
+                  <div class="formula-card-code">taylor(f(x), x, 0, 5)</div>
+                  <div class="formula-card-desc">Taylor polynomial expansion</div>
+                </div>
+                <div class="formula-card" data-formula="limit(f(x), x, 0)" data-title="Limit" data-desc="Evaluate limit as x approaches value">
+                  <div class="formula-card-title">Limit</div>
+                  <div class="formula-card-code">limit(f(x), x, 0)</div>
+                  <div class="formula-card-desc">Evaluate limit as x approaches value</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -777,12 +1017,14 @@
             <select id="matrix-rows-select" class="form-control" style="width: 55px; margin-left: 4px;">
               <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option>
               <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
             </select>
           </label>
           <label>Cols:
             <select id="matrix-cols-select" class="form-control" style="width: 55px; margin-left: 4px;">
               <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option>
               <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+              <option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option>
             </select>
           </label>
         </div>
@@ -882,6 +1124,34 @@
       <div class="modal-footer">
         <button class="dialog-btn dialog-cancel-btn">Cancel</button>
         <button id="btn-confirm-export-pdf" class="dialog-btn primary">Export as PDF...</button>
+      </div>
+    <!-- Dialog 6: Alert / Notification -->
+    <div id="dialog-alert" class="modal-dialog" style="width: 440px; display: none;">
+      <div class="modal-header">
+        <span id="dialog-alert-title" class="modal-title">OpenMath</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <p id="dialog-alert-message" style="font-size: 13px; color: var(--text-primary); line-height: 1.5;"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn primary dialog-cancel-btn">OK</button>
+      </div>
+    </div>
+
+    <!-- Dialog 7: Prompt / Input -->
+    <div id="dialog-prompt" class="modal-dialog" style="width: 420px; display: none;">
+      <div class="modal-header">
+        <span id="dialog-prompt-title" class="modal-title">OpenMath</span>
+        <button class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <p id="dialog-prompt-message" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;"></p>
+        <input type="text" id="dialog-prompt-input" class="form-control" style="width: 100%;" />
+      </div>
+      <div class="modal-footer">
+        <button class="dialog-btn dialog-cancel-btn">Cancel</button>
+        <button id="btn-dialog-prompt-ok" class="dialog-btn primary">OK</button>
       </div>
     </div>
   </div>

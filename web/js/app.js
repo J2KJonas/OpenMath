@@ -38,6 +38,7 @@ class OpenMathApplication {
     this.initContextBar();
     this.initStatusBar();
     this.initGlobalShortcuts();
+    window.addEventListener("resize", () => this.updateTabOverflow());
 
     // Start with Start.mw (default start page matching ui/main_window.py)
     this.createStartPageDocument();
@@ -92,11 +93,29 @@ class OpenMathApplication {
 
           case "DOCUMENT_PARSED":
             if (data.error) {
-              alert(`Could not parse document: ${data.error}`);
+              this.dialogManager.showAlert(`Could not parse document: ${data.error}`, "Import Error");
+              this.updateStatusMessage(`Import error: ${data.error}`);
             } else if (data.cells && data.cells.length > 0) {
-              const ws = this.createNewWorksheet(data.filename || "Imported.mw");
-              ws.loadImportedCells(data.cells);
-              this.updateStatusMessage(`Imported ${data.cells.length} cells.`);
+              const filename = data.filename || "Imported.mw";
+              const currentWs = this.getActiveWorksheet();
+              let targetWs;
+              if (currentWs && currentWs.cells.length === 1 && (!currentWs.cells[0].input || currentWs.cells[0].input.trim() === "") && !currentWs.cells[0].result && !currentWs.filePath) {
+                targetWs = currentWs;
+                targetWs.title = filename;
+                const doc = this.documents.find(d => d.id === targetWs.docId);
+                if (doc) doc.title = filename;
+                this.renderTabsToolbar();
+              } else {
+                targetWs = this.createNewWorksheet(filename);
+              }
+              targetWs.filePath = filename;
+              targetWs.loadImportedCells(data.cells);
+              this.setWindowTitle(filename);
+              this.updateStatusPath(filename);
+              this.updateStatusMessage(`Opened ${filename} (${data.cells.length} cells).`);
+            } else {
+              this.dialogManager.showAlert("The imported document contains no cells.", "Empty Document");
+              this.updateStatusMessage("Imported document contains no cells.");
             }
             break;
 
@@ -254,6 +273,63 @@ class OpenMathApplication {
       doc.tabElement = tabEl;
       tabsContainer.appendChild(tabEl);
     });
+
+    this.updateTabOverflow();
+  }
+
+  updateTabOverflow() {
+    const tabsContainer = document.getElementById("document-tabs-list");
+    const overflowBtn = document.getElementById("btn-tab-overflow");
+    if (!tabsContainer || !overflowBtn) return;
+
+    const hasOverflow = tabsContainer.scrollWidth > tabsContainer.clientWidth + 2;
+    overflowBtn.style.display = (hasOverflow || this.documents.length > 1) ? "inline-flex" : "none";
+  }
+
+  showTabOverflowMenu() {
+    let menu = document.getElementById("tab-overflow-menu");
+    if (!menu) {
+      menu = document.createElement("div");
+      menu.id = "tab-overflow-menu";
+      menu.className = "dropdown-menu";
+      document.body.appendChild(menu);
+
+      document.addEventListener("click", (e) => {
+        if (!menu.contains(e.target) && e.target.id !== "btn-tab-overflow") {
+          menu.style.display = "none";
+        }
+      });
+    }
+
+    menu.innerHTML = "";
+    this.documents.forEach(doc => {
+      const item = document.createElement("button");
+      item.className = "menu-action";
+      const isActive = doc.id === this.activeDocId;
+      item.innerHTML = `
+        <span style="display: flex; align-items: center; gap: 8px; width: 100%;">
+          <span style="width: 14px; text-align: center; font-weight: bold; color: var(--accent);">${isActive ? "✓" : ""}</span>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${doc.title}</span>
+          <span style="font-size: 10px; color: var(--text-muted);">${doc.type === 'start' ? 'Start' : 'MW'}</span>
+        </span>
+      `;
+      item.onclick = (e) => {
+        e.stopPropagation();
+        menu.style.display = "none";
+        this.switchToDocument(doc.id);
+      };
+      menu.appendChild(item);
+    });
+
+    const overflowBtn = document.getElementById("btn-tab-overflow");
+    if (overflowBtn) {
+      const rect = overflowBtn.getBoundingClientRect();
+      menu.style.position = "fixed";
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.left = `${Math.max(10, rect.right - 220)}px`;
+      menu.style.display = "block";
+      menu.style.zIndex = "3000";
+    }
   }
 
   getActiveWorksheet() {
@@ -465,6 +541,14 @@ class OpenMathApplication {
     document.getElementById("tb-btn-zoom-out").onclick = () => this.zoomWorksheet(-1);
 
     document.getElementById("btn-tab-add").onclick = () => this.createNewWorksheet();
+
+    const overflowBtn = document.getElementById("btn-tab-overflow");
+    if (overflowBtn) {
+      overflowBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.showTabOverflowMenu();
+      };
+    }
 
     // Help Search Input & Autocomplete
     const searchInput = document.getElementById("tb-search-input");
@@ -937,20 +1021,35 @@ class OpenMathApplication {
   triggerFileOpenDialog() {
     const fileInput = document.createElement("input");
     fileInput.type = "file";
-    fileInput.accept = ".mw,.mv,.json,.txt";
+    fileInput.accept = ".mw,.mv,.json,.txt,.zip";
     fileInput.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
+        this.updateStatusMessage(`Loading ${file.name}...`);
         const reader = new FileReader();
         reader.onload = (re) => {
-          const content = re.target.result;
+          const buffer = re.target.result;
+          const uint8 = new Uint8Array(buffer);
+          let content;
+          // Check for zip magic header: PK\x03\x04 (0x50, 0x4B, 0x03, 0x04)
+          if (uint8.length >= 4 && uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04) {
+            let binary = "";
+            const chunkSize = 16384;
+            for (let i = 0; i < uint8.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize));
+            }
+            content = "BASE64_ZIP:" + btoa(binary);
+          } else {
+            const decoder = new TextDecoder("utf-8");
+            content = decoder.decode(buffer);
+          }
           this.worker.postMessage({
             type: "PARSE_DOCUMENT",
             filename: file.name,
             content
           });
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
       }
     };
     fileInput.click();
@@ -966,13 +1065,17 @@ class OpenMathApplication {
   saveActiveDocumentAs() {
     const ws = this.getActiveWorksheet();
     if (!ws) return;
-    const newName = prompt("Enter file name:", ws.title || "Worksheet.mw");
-    if (newName) {
-      ws.title = newName.endsWith(".mw") ? newName : `${newName}.mw`;
-      this.renderTabsToolbar();
-      this.setWindowTitle(ws.title);
-      this.saveActiveDocument();
-    }
+    this.dialogManager.showPrompt("Enter file name:", ws.title || "Worksheet.mw", (newName) => {
+      if (newName && newName.trim()) {
+        const trimmed = newName.trim();
+        ws.title = trimmed.endsWith(".mw") ? trimmed : `${trimmed}.mw`;
+        const doc = this.documents.find(d => d.id === ws.docId);
+        if (doc) doc.title = ws.title;
+        this.renderTabsToolbar();
+        this.setWindowTitle(ws.title);
+        this.saveActiveDocument();
+      }
+    }, "Save Document As");
   }
 
   exportDocument(format, filename = null) {

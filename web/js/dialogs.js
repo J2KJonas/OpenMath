@@ -52,7 +52,53 @@ export class DialogManager {
       this.setupOptionsDialog();
     } else if (dialogId === "dialog-help-topics") {
       this.setupHelpTopics();
+    } else if (dialogId === "dialog-export-pdf") {
+      this.setupExportPdf();
     }
+  }
+
+  showAlert(message, title = "OpenMath") {
+    const titleEl = document.getElementById("dialog-alert-title");
+    const msgEl = document.getElementById("dialog-alert-message");
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    this.openDialog("dialog-alert");
+  }
+
+  showPrompt(message, defaultValue = "", onConfirm = null, title = "OpenMath") {
+    const titleEl = document.getElementById("dialog-prompt-title");
+    const msgEl = document.getElementById("dialog-prompt-message");
+    const inputEl = document.getElementById("dialog-prompt-input");
+    const okBtn = document.getElementById("btn-dialog-prompt-ok");
+
+    if (titleEl) titleEl.textContent = title;
+    if (msgEl) msgEl.textContent = message;
+    if (inputEl) {
+      inputEl.value = defaultValue;
+      setTimeout(() => {
+        inputEl.focus();
+        inputEl.select();
+      }, 50);
+    }
+
+    if (okBtn) {
+      okBtn.onclick = () => {
+        const val = inputEl ? inputEl.value : "";
+        this.closeCurrentDialog();
+        if (onConfirm) onConfirm(val);
+      };
+    }
+
+    if (inputEl) {
+      inputEl.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          okBtn?.click();
+        }
+      };
+    }
+
+    this.openDialog("dialog-prompt");
   }
 
   closeCurrentDialog() {
