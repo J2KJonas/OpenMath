@@ -16,7 +16,6 @@ try {
 }
 
 let pyodide = null;
-let casBridge = null;
 let isInitialized = false;
 let pendingMessages = [];
 
@@ -29,18 +28,20 @@ json.dumps(cas_bridge.parse_worksheet_document(_doc_content_input))
     const parsedDoc = JSON.parse(docJson);
     postMessage({
       type: "DOCUMENT_PARSED",
+      filename: data.filename,
       ...parsedDoc
     });
   } catch (err) {
     postMessage({
       type: "DOCUMENT_PARSED",
+      filename: data.filename,
       cells: [],
       error: `Document Parse Error: ${err.message}`
     });
   }
 }
 
-// List of cas_engine modules to load
+// List of cas_engine modules to load if bundle isn't available
 const CAS_ENGINE_FILES = [
   "__init__.py",
   "engine.py",
@@ -76,7 +77,7 @@ async function initPyodideRuntime(basePath = "../") {
     // Set up directories in virtual filesystem
     pyodide.FS.mkdirTree("/home/pyodide/cas_engine");
 
-    // Attempt to load bundled bundle JSON first using multiple candidate paths
+    // Attempt to load bundle JSON first
     let loadedBundle = false;
     const bundleCandidates = [
       new URL(`${basePath}cas_bundle.json`, self.location.href).href,
@@ -102,12 +103,12 @@ async function initPyodideRuntime(basePath = "../") {
           break;
         }
       } catch (e) {
-        // Continue to next candidate
+        // Try next candidate
       }
     }
 
     if (!loadedBundle) {
-      // Fetch each cas_engine file directly
+      // Fallback: Fetch each cas_engine file directly
       for (const file of CAS_ENGINE_FILES) {
         try {
           const resp = await fetch(`${basePath}cas_engine/${file}`);
@@ -187,14 +188,14 @@ self.onmessage = async function (e) {
         postMessage({
           type: "RESULT",
           id: data.id,
+          docId: data.docId,
           error: "CAS engine is still initializing. Please wait a moment..."
         });
         return;
       }
       try {
-        // Pass expression and precision safely via Python globals
         pyodide.globals.set("_eval_expr_input", data.expr || "");
-        pyodide.globals.set("_eval_prec_input", parseInt(data.precision || 6, 10));
+        pyodide.globals.set("_eval_prec_input", parseInt(data.precision || 10, 10));
 
         const resultJson = pyodide.runPython(`
 json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec_input))
@@ -203,12 +204,14 @@ json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec
         postMessage({
           type: "RESULT",
           id: data.id,
+          docId: data.docId,
           ...parsed
         });
       } catch (err) {
         postMessage({
           type: "RESULT",
           id: data.id,
+          docId: data.docId,
           error: `Worker Error: ${err.message}`
         });
       }
@@ -225,6 +228,40 @@ json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec
       if (isInitialized) {
         const varsJson = pyodide.runPython("json.dumps(cas_bridge.get_variables_list())");
         postMessage({ type: "WHOS_RESULT", vars: JSON.parse(varsJson) });
+      }
+      break;
+
+    case "SET_DECIMAL_SEPARATOR":
+      if (isInitialized) {
+        pyodide.globals.set("_dec_sep", data.sep || ",");
+        pyodide.runPython("cas_bridge.set_decimal_separator(_dec_sep)");
+      }
+      break;
+
+    case "GET_HELP_CATALOG":
+      if (isInitialized) {
+        const catJson = pyodide.runPython("json.dumps(cas_bridge.get_help_catalog())");
+        postMessage({ type: "HELP_CATALOG", catalog: JSON.parse(catJson) });
+      }
+      break;
+
+    case "EXPORT_DOCUMENT":
+      if (isInitialized) {
+        try {
+          pyodide.globals.set("_export_cells_raw", JSON.stringify(data.cells || []));
+          pyodide.globals.set("_export_fmt", data.format || "mw");
+          const exported = pyodide.runPython(`
+cas_bridge.export_worksheet_document(json.loads(_export_cells_raw), _export_fmt)
+`);
+          postMessage({
+            type: "EXPORT_RESULT",
+            format: data.format,
+            content: exported,
+            filename: data.filename
+          });
+        } catch (err) {
+          console.error("Export error:", err);
+        }
       }
       break;
 

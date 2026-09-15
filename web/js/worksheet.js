@@ -1,515 +1,675 @@
 /**
- * OpenMath Web Worksheet Manager & KaTeX Typeset Renderer
- * Manages calculation cells [In n] / [Out n], precision switches, and copy/export capabilities.
+ * OpenMath Interactive Worksheet View
+ * Replicates ui/worksheet_view.py and ui/worksheet_cell.py:
+ * Stacked execution cells with left bracket bar `[`, classic dark red prompt `[> `,
+ * 2D/1D/Text modes, KaTeX formula outputs in royal blue `#0000aa`, equation labels `(1)`,
+ * collapsible section headers with hierarchical tree guidelines `└───`, plots, and error suggestions.
  */
 
 import { MathPlotter } from "./plotter.js";
 
-export class WorksheetManager {
-  constructor(containerEl, onEvaluateRequest, options = {}) {
-    this.container = containerEl;
-    this.onEvaluate = onEvaluateRequest;
-    this.theme = options.theme || "dark";
-    this.globalPrecision = 6;
-    this.globalMode = "exact"; // "exact" | "numeric"
+// Unicode sub/superscript map matching ui/worksheet_cell.py
+const SUPER_MAP = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+  '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+  'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ',
+  'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ⁱ', 'j': 'ʲ',
+  'k': 'ᵏ', 'l': 'ˡ', 'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ',
+  'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ',
+  'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+  '*': '·', '·': '·'
+};
+
+const SUB_MAP = {
+  '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+  '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+  '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+  'a': 'ₐ', 'b': 'ᵦ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
+  'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ',
+  'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+  'v': 'ᵥ', 'x': 'ₓ'
+};
+
+export function formatSubscriptsAndSuperscripts(text) {
+  if (!text || (!text.includes('_') && !text.includes('^'))) return text;
+  let formatted = text;
+  // Superscripts ^2 or ^{abc}
+  formatted = formatted.replace(/\^{([0-9a-zA-Z+-]+)}/g, (_, chars) => {
+    return Array.from(chars).map(c => SUPER_MAP[c] || c).join('');
+  });
+  formatted = formatted.replace(/\^([0-9a-zA-Z])/g, (_, c) => SUPER_MAP[c] || `^${c}`);
+
+  // Subscripts _1 or _{12}
+  formatted = formatted.replace(/_([0-9a-zA-Z])/g, (_, c) => SUB_MAP[c] || `_${c}`);
+  formatted = formatted.replace(/_{([0-9a-zA-Z+-]+)}/g, (_, chars) => {
+    return Array.from(chars).map(c => SUB_MAP[c] || c).join('');
+  });
+  return formatted;
+}
+
+export class WorksheetView {
+  constructor(app, container, docId, title = "Untitled-1.mw") {
+    this.app = app;
+    this.container = container;
+    this.docId = docId;
+    this.title = title;
+    this.filePath = null;
+    this.isEditable = true;
+    this.zoom = 100;
 
     this.cells = [];
-    this.cellCounter = 0;
     this.activeCellId = null;
+    this.executionCounter = 0;
+    this.plotInstances = new Map();
+
+    this.undoStack = [];
+    this.redoStack = [];
+
+    this.renderSkeleton();
+    this.addCell(); // Default first empty cell
   }
 
-  setTheme(theme) {
-    this.theme = theme;
-    // Re-render any existing plots
-    this.cells.forEach((cell) => {
-      if (cell.result && cell.result.is_plot && cell.plotInstance) {
-        cell.plotInstance.options.theme = theme;
-        cell.plotInstance.render();
-      }
-    });
-  }
-
-  setGlobalPrecision(precision) {
-    this.globalPrecision = parseInt(precision, 10);
-  }
-
-  setGlobalMode(mode) {
-    this.globalMode = mode;
-    this.cells.forEach((cell) => {
-      if (cell.result && !cell.result.is_plot && !cell.result.error) {
-        this.renderMathOutput(cell);
-      }
-    });
-  }
-
-  getActiveInput() {
-    if (!this.activeCellId) {
-      if (this.cells.length > 0) {
-        return this.cells[this.cells.length - 1].inputEl;
-      }
-      return null;
-    }
-    const cell = this.cells.find((c) => c.id === this.activeCellId);
-    return cell ? cell.inputEl : null;
-  }
-
-  insertTextAtCursor(text, cursorOffset = 0) {
-    let inputEl = this.getActiveInput();
-    if (!inputEl) {
-      const newCell = this.addCell("", true);
-      inputEl = newCell.inputEl;
-    }
-
-    const start = inputEl.selectionStart || inputEl.value.length;
-    const end = inputEl.selectionEnd || inputEl.value.length;
-    const val = inputEl.value;
-
-    inputEl.value = val.substring(0, start) + text + val.substring(end);
-    const newCursor = start + text.length + cursorOffset;
-    inputEl.focus();
-    inputEl.setSelectionRange(newCursor, newCursor);
-  }
-
-  addCell(initialText = "", focus = true, cachedResult = null) {
-    this.cellCounter++;
-    const idx = this.cellCounter;
-    const cellId = `cell_${idx}`;
-
-    const cellObj = {
-      id: cellId,
-      index: idx,
-      mode: this.globalMode,
-      precision: this.globalPrecision,
-      result: null,
-      plotInstance: null,
-      dom: null,
-      inputEl: null
-    };
-
-    const cellEl = document.createElement("div");
-    cellEl.className = "worksheet-cell cell-execution-group";
-    cellEl.id = cellId;
-    cellEl.dataset.cellId = cellId;
-
-    cellEl.innerHTML = `
-      <div class="cell-bracket" title="Execution Group ["></div>
-      <div class="cell-content">
-        <div class="cell-input-row">
-          <span class="math-prompt">&gt;</span>
-          <textarea class="cell-input" placeholder="" rows="1" spellcheck="false">${this.escapeHtml(initialText)}</textarea>
-        </div>
-        <div class="cell-output-row" style="display: none;">
-          <div class="math-output-wrapper">
-            <div class="output-content"></div>
-            <span class="math-equation-label">(${idx})</span>
-          </div>
+  renderSkeleton() {
+    this.container.innerHTML = `
+      <div class="worksheet-scroll-container">
+        <div class="worksheet-canvas" id="canvas-${this.docId}">
+          <canvas class="scope-overlay-canvas" id="overlay-${this.docId}"></canvas>
+          <div class="cells-list" id="cells-list-${this.docId}"></div>
+          <div class="worksheet-click-spacer" id="spacer-${this.docId}"></div>
         </div>
       </div>
     `;
 
-    const inputEl = cellEl.querySelector(".cell-input");
-    cellObj.dom = cellEl;
-    cellObj.inputEl = inputEl;
+    this.cellsContainer = document.getElementById(`cells-list-${this.docId}`);
+    this.scopeCanvas = document.getElementById(`overlay-${this.docId}`);
+    this.spacer = document.getElementById(`spacer-${this.docId}`);
 
-    // Auto-expand textarea height
-    const autoResize = () => {
-      inputEl.style.height = "auto";
-      inputEl.style.height = `${inputEl.scrollHeight}px`;
+    // Click anywhere on bottom blank area to insert/focus cell
+    this.spacer.addEventListener("click", () => {
+      if (!this.isEditable) return;
+      if (this.cells.length > 0) {
+        const lastCell = this.cells[this.cells.length - 1];
+        if (lastCell.input.trim() === "" && !lastCell.isSectionHeader) {
+          this.focusCell(lastCell.id);
+          return;
+        }
+      }
+      this.addCell();
+    });
+
+    window.addEventListener("resize", () => this.drawScopeOverlay());
+  }
+
+  addCell(options = {}) {
+    const id = "cell_" + Math.random().toString(36).substring(2, 9);
+    const mode = options.mode || "2d_math"; // "2d_math", "1d_math", "text", "section"
+    const isSection = options.isSectionHeader || mode === "section";
+    const sectionLevel = options.sectionLevel || 0;
+    const title = options.sectionTitle || "";
+    const input = options.input || "";
+    const insertAfterId = options.insertAfterId;
+
+    const cellObj = {
+      id,
+      mode,
+      isSectionHeader: isSection,
+      sectionLevel,
+      sectionTitle: title,
+      isCollapsed: false,
+      input,
+      result: options.result || null,
+      error: options.error || null,
+      suggestion: options.suggestion || null,
+      equationIndex: null,
+      domElement: null
     };
-    inputEl.addEventListener("input", autoResize);
 
-    // Focus tracking
-    inputEl.addEventListener("focus", () => {
-      this.activeCellId = cellId;
-      document.querySelectorAll(".worksheet-cell").forEach((c) => c.classList.remove("focused"));
-      cellEl.classList.add("focused");
-    });
-
-    const bracketEl = cellEl.querySelector(".cell-bracket");
-    if (bracketEl) {
-      bracketEl.addEventListener("click", () => {
-        inputEl.focus();
-      });
-    }
-
-    // Keyboard navigation and evaluation shortcuts (Enter evaluates like desktop OpenMath)
-    inputEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        this.evaluateCell(cellId);
-      } else if (e.key === "Enter" && e.shiftKey) {
-        e.preventDefault();
-        this.evaluateCell(cellId);
-      } else if (e.key === "Backspace" && inputEl.value === "") {
-        // If empty cell, backspace deletes and moves focus to previous cell
-        if (this.cells.length > 1) {
-          e.preventDefault();
-          const currIdx = this.cells.findIndex((c) => c.id === cellId);
-          this.deleteCell(cellId);
-          const targetIdx = Math.max(0, currIdx - 1);
-          if (this.cells[targetIdx]) {
-            this.cells[targetIdx].inputEl.focus();
-          }
-        }
-      } else if (e.key === "ArrowUp") {
-        if (inputEl.selectionStart === 0 && inputEl.selectionEnd === 0) {
-          const currIdx = this.cells.findIndex((c) => c.id === cellId);
-          if (currIdx > 0) {
-            e.preventDefault();
-            this.cells[currIdx - 1].inputEl.focus();
-          }
-        }
-      } else if (e.key === "ArrowDown") {
-        if (inputEl.selectionStart === inputEl.value.length) {
-          const currIdx = this.cells.findIndex((c) => c.id === cellId);
-          if (currIdx < this.cells.length - 1) {
-            e.preventDefault();
-            this.cells[currIdx + 1].inputEl.focus();
-          }
-        }
+    if (insertAfterId) {
+      const idx = this.cells.findIndex(c => c.id === insertAfterId);
+      if (idx !== -1) {
+        this.cells.splice(idx + 1, 0, cellObj);
+      } else {
+        this.cells.push(cellObj);
       }
-    });
-
-    this.container.appendChild(cellEl);
-    this.cells.push(cellObj);
-
-    if (cachedResult) {
-      cellObj.result = cachedResult;
-      const outputRow = cellEl.querySelector(".cell-output-row");
-      if (outputRow) {
-        outputRow.style.display = "block";
-        this.renderMathOutput(cellObj);
-      }
+    } else {
+      this.cells.push(cellObj);
     }
 
-    if (focus) {
-      inputEl.focus();
-      this.activeCellId = cellId;
-    }
-    autoResize();
+    this.renderCellDom(cellObj);
+    this.focusCell(id);
+    this.drawScopeOverlay();
     return cellObj;
   }
 
-  addSectionHeader(title, level = 0, html = "", isCollapsed = false) {
-    this.cellCounter++;
-    const idx = this.cellCounter;
-    const secId = `section_${idx}`;
-
-    const secEl = document.createElement("div");
-    secEl.className = `worksheet-cell cell-section-header level-${level}`;
-    secEl.id = secId;
-    secEl.dataset.sectionLevel = level;
-    secEl.dataset.collapsed = isCollapsed ? "true" : "false";
-
-    const displayHtml = (html && html.trim()) ? html : `<span class="section-title-text">${this.escapeHtml(title || "Section")}</span>`;
-
-    secEl.innerHTML = `
-      <div class="section-header-inner">
-        <button class="section-toggle-btn" title="Expand / Collapse section">
-          <span class="chevron-arrow">${isCollapsed ? "▶" : "▼"}</span>
-        </button>
-        <div class="section-title-display">${displayHtml}</div>
-      </div>
-    `;
-
-    const toggleBtn = secEl.querySelector(".section-toggle-btn");
-    const chevron = secEl.querySelector(".chevron-arrow");
-    toggleBtn.addEventListener("click", () => {
-      const collapsed = secEl.dataset.collapsed === "true";
-      const nextCollapsed = !collapsed;
-      secEl.dataset.collapsed = nextCollapsed ? "true" : "false";
-      chevron.textContent = nextCollapsed ? "▶" : "▼";
-      this.toggleSectionCollapse(secEl, level, nextCollapsed);
-    });
-
-    this.container.appendChild(secEl);
-    return secEl;
+  addCellWithInput(expr, autoExecute = false) {
+    const cell = this.addCell({ input: expr });
+    if (autoExecute) {
+      setTimeout(() => this.executeCell(cell.id), 50);
+    }
   }
 
-  toggleSectionCollapse(sectionEl, sectionLevel, isCollapsed) {
-    let sibling = sectionEl.nextElementSibling;
-    while (sibling) {
-      if (sibling.classList.contains("cell-section-header")) {
-        const sibLevel = parseInt(sibling.dataset.sectionLevel || "0", 10);
-        if (sibLevel <= sectionLevel) {
-          break; // Stop at next peer or higher section
+  renderCellDom(cell) {
+    const cellDiv = document.createElement("div");
+    cellDiv.className = `worksheet-cell ${cell.isSectionHeader ? 'section-header-cell level-' + cell.sectionLevel : ''}`;
+    cellDiv.id = cell.id;
+
+    if (cell.isSectionHeader) {
+      cellDiv.innerHTML = `
+        <div class="section-row">
+          <button class="section-toggle-btn" title="Toggle Section Collapse">${cell.isCollapsed ? '▶' : '▼'}</button>
+          <div class="section-title-edit" contenteditable="${this.isEditable}" placeholder="Section Title...">${cell.sectionTitle || ''}</div>
+        </div>
+      `;
+
+      const toggleBtn = cellDiv.querySelector(".section-toggle-btn");
+      toggleBtn.onclick = (e) => {
+        e.stopPropagation();
+        cell.isCollapsed = !cell.isCollapsed;
+        toggleBtn.textContent = cell.isCollapsed ? '▶' : '▼';
+        this.updateSectionFolding();
+        this.drawScopeOverlay();
+      };
+
+      const titleEdit = cellDiv.querySelector(".section-title-edit");
+      titleEdit.oninput = () => {
+        cell.sectionTitle = titleEdit.innerText;
+      };
+      titleEdit.onfocus = () => this.setActiveCell(cell.id);
+    } else {
+      // Regular execution group cell
+      cellDiv.innerHTML = `
+        <div class="cell-bracket-bar"></div>
+        <div class="cell-input-row">
+          <span class="cell-prompt">[&gt; </span>
+          <div class="cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (cell.mode === 'text' ? 'text' : '2d')}"
+               contenteditable="${this.isEditable}"
+               spellcheck="false">${cell.input || ''}</div>
+        </div>
+        <div class="cell-output-container"></div>
+      `;
+
+      const inputEdit = cellDiv.querySelector(".cell-input-edit");
+
+      inputEdit.onfocus = () => this.setActiveCell(cell.id);
+
+      inputEdit.oninput = () => {
+        cell.input = inputEdit.innerText;
+        // In 2D Math mode, auto-convert _1 and ^2 to Unicode sub/superscript
+        if (cell.mode === "2d_math") {
+          const raw = inputEdit.innerText;
+          const formatted = formatSubscriptsAndSuperscripts(raw);
+          if (raw !== formatted) {
+            const sel = window.getSelection();
+            const offset = sel.focusOffset;
+            inputEdit.innerText = formatted;
+            // Restore caret
+            try {
+              const range = document.createRange();
+              range.setStart(inputEdit.firstChild || inputEdit, Math.min(offset, inputEdit.innerText.length));
+              range.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            } catch (e) {}
+            cell.input = formatted;
+          }
+        }
+        this.app.contextPanel.setTargetExpression(cell.input);
+      };
+
+      inputEdit.onkeydown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          this.executeCell(cell.id);
+        } else if (e.key === "F5") {
+          e.preventDefault();
+          this.toggleCellMode(cell.id);
+        } else if (e.key === "Backspace" && inputEdit.innerText.trim() === "") {
+          if (this.cells.length > 1) {
+            e.preventDefault();
+            this.deleteCell(cell.id);
+          }
+        } else if (e.key === "ArrowDown") {
+          const idx = this.cells.findIndex(c => c.id === cell.id);
+          if (idx < this.cells.length - 1) {
+            this.focusCell(this.cells[idx + 1].id);
+          }
+        } else if (e.key === "ArrowUp") {
+          const idx = this.cells.findIndex(c => c.id === cell.id);
+          if (idx > 0) {
+            this.focusCell(this.cells[idx - 1].id);
+          }
+        }
+      };
+    }
+
+    cell.domElement = cellDiv;
+
+    // Insert into DOM in order
+    const idx = this.cells.findIndex(c => c.id === cell.id);
+    if (idx === 0) {
+      this.cellsContainer.prepend(cellDiv);
+    } else {
+      const prevDom = this.cells[idx - 1]?.domElement;
+      if (prevDom && prevDom.parentNode) {
+        prevDom.after(cellDiv);
+      } else {
+        this.cellsContainer.appendChild(cellDiv);
+      }
+    }
+
+    if (cell.result || cell.error) {
+      this.renderCellOutput(cell);
+    }
+  }
+
+  focusCell(cellId) {
+    this.setActiveCell(cellId);
+    const cell = this.cells.find(c => c.id === cellId);
+    if (!cell || !cell.domElement) return;
+
+    const editable = cell.domElement.querySelector(".cell-input-edit, .section-title-edit");
+    if (editable) {
+      editable.focus();
+      // Place cursor at end
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(editable);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (e) {}
+    }
+  }
+
+  setActiveCell(cellId) {
+    this.activeCellId = cellId;
+    this.cells.forEach(c => {
+      if (c.domElement) {
+        if (c.id === cellId) {
+          c.domElement.classList.add("active");
+        } else {
+          c.domElement.classList.remove("active");
         }
       }
-      sibling.style.display = isCollapsed ? "none" : "";
-      sibling = sibling.nextElementSibling;
+    });
+
+    const active = this.cells.find(c => c.id === cellId);
+    if (active) {
+      this.app.updateContextBar(active.mode);
+      this.app.contextPanel.setTargetExpression(active.input || active.sectionTitle);
+      this.app.updateStatusMode(active.mode);
     }
   }
 
-  addTextCell(content = "", embeddedImages = {}) {
-    this.cellCounter++;
-    const idx = this.cellCounter;
-    const cellId = `text_cell_${idx}`;
+  toggleCellMode(cellId) {
+    const cell = this.cells.find(c => c.id === cellId);
+    if (!cell || cell.isSectionHeader) return;
 
-    const textEl = document.createElement("div");
-    textEl.className = "worksheet-cell cell-text-mode";
-    textEl.id = cellId;
+    // Cycle 2d_math -> 1d_math -> text -> 2d_math
+    if (cell.mode === "2d_math") cell.mode = "1d_math";
+    else if (cell.mode === "1d_math") cell.mode = "text";
+    else cell.mode = "2d_math";
 
-    let formatted = content || "";
-    if (embeddedImages && typeof embeddedImages === "object") {
-      for (const [imgId, b64] of Object.entries(embeddedImages)) {
-        const dataUri = `data:image/png;base64,${b64}`;
-        formatted = formatted.split(imgId).join(dataUri);
-      }
+    const editEl = cell.domElement?.querySelector(".cell-input-edit");
+    if (editEl) {
+      editEl.className = `cell-input-edit mode-${cell.mode === '1d_math' ? '1d' : (cell.mode === 'text' ? 'text' : '2d')}`;
+    }
+    this.app.updateContextBar(cell.mode);
+    this.app.updateStatusMode(cell.mode);
+  }
+
+  setCellMode(cellId, mode) {
+    const cell = this.cells.find(c => c.id === cellId);
+    if (!cell || cell.isSectionHeader) return;
+
+    cell.mode = mode;
+    const editEl = cell.domElement?.querySelector(".cell-input-edit");
+    if (editEl) {
+      editEl.className = `cell-input-edit mode-${mode === '1d_math' ? '1d' : (mode === 'text' ? 'text' : '2d')}`;
+    }
+    this.app.updateContextBar(cell.mode);
+    this.app.updateStatusMode(cell.mode);
+  }
+
+  executeCell(cellId) {
+    const cell = this.cells.find(c => c.id === cellId);
+    if (!cell || cell.isSectionHeader) return;
+
+    const input = (cell.input || "").trim();
+    if (!input) {
+      // Advance to next cell or create one
+      this.advanceToNextCell(cellId);
+      return;
     }
 
-    textEl.innerHTML = `
-      <div class="text-cell-body" contenteditable="true" spellcheck="false">${formatted}</div>
-    `;
+    this.app.worker.postMessage({
+      type: "EVALUATE",
+      id: cell.id,
+      docId: this.docId,
+      expr: input,
+      precision: this.app.precision || 10
+    });
 
-    this.container.appendChild(textEl);
-    return textEl;
+    this.app.updateStatusMessage("Evaluating...");
+  }
+
+  handleCellResult(resultData) {
+    const cell = this.cells.find(c => c.id === resultData.id);
+    if (!cell) return;
+
+    cell.error = resultData.error || null;
+    cell.suggestion = resultData.suggestion || null;
+    cell.result = resultData;
+
+    if (!cell.error) {
+      this.executionCounter += 1;
+      cell.equationIndex = this.executionCounter;
+    } else {
+      cell.equationIndex = null;
+    }
+
+    this.renderCellOutput(cell);
+    this.advanceToNextCell(cell.id);
+    this.drawScopeOverlay();
+
+    this.app.palette.refreshVariables();
+    if (resultData.execution_time_ms) {
+      this.app.updateExecutionTime(resultData.execution_time_ms / 1000);
+    }
+    this.app.updateStatusMessage("Ready");
+  }
+
+  renderCellOutput(cell) {
+    if (!cell.domElement) return;
+    const outputContainer = cell.domElement.querySelector(".cell-output-container");
+    if (!outputContainer) return;
+
+    outputContainer.innerHTML = "";
+
+    // If there is an error
+    if (cell.error) {
+      const errBox = document.createElement("div");
+      errBox.className = "cell-error-box";
+      errBox.innerHTML = `
+        <span class="error-title">Error:</span>
+        <span>${cell.error}</span>
+        ${cell.suggestion ? `<button class="error-suggestion-btn">Did you mean: <code>${cell.suggestion}</code>?</button>` : ''}
+      `;
+
+      if (cell.suggestion) {
+        const suggBtn = errBox.querySelector(".error-suggestion-btn");
+        suggBtn.onclick = () => {
+          cell.input = cell.suggestion;
+          const editEl = cell.domElement.querySelector(".cell-input-edit");
+          if (editEl) editEl.innerText = cell.suggestion;
+          this.executeCell(cell.id);
+        };
+      }
+      outputContainer.appendChild(errBox);
+      return;
+    }
+
+    const res = cell.result;
+    if (!res || res.suppress_output) return;
+
+    // If plot
+    if (res.is_plot && res.plot_data) {
+      const plotBox = document.createElement("div");
+      plotBox.className = "cell-plot-container";
+      const canvas = document.createElement("canvas");
+      canvas.className = "cell-plot-canvas";
+      plotBox.appendChild(canvas);
+      outputContainer.appendChild(plotBox);
+
+      // Create MathPlotter instance
+      setTimeout(() => {
+        const plotter = new MathPlotter(canvas, res.plot_data, { theme: this.app.theme });
+        this.plotInstances.set(cell.id, plotter);
+      }, 0);
+      return;
+    }
+
+    // Formula KaTeX Output
+    const outBox = document.createElement("div");
+    outBox.className = "cell-output-box";
+
+    const mathEl = document.createElement("div");
+    mathEl.className = "cell-output-math";
+
+    const latex = res.exact_latex || res.numeric_latex || "";
+    const plainText = res.exact_text || res.numeric_text || "";
+
+    if (latex && window.katex) {
+      try {
+        window.katex.render(latex, mathEl, { displayMode: true, throwOnError: false });
+      } catch (e) {
+        mathEl.textContent = plainText;
+      }
+    } else {
+      mathEl.textContent = plainText;
+    }
+
+    const eqLabel = document.createElement("div");
+    eqLabel.className = "cell-equation-label";
+    if (cell.equationIndex) {
+      eqLabel.textContent = `(${cell.equationIndex})`;
+    }
+
+    outBox.appendChild(mathEl);
+    outBox.appendChild(eqLabel);
+    outputContainer.appendChild(outBox);
+  }
+
+  advanceToNextCell(currentCellId) {
+    const idx = this.cells.findIndex(c => c.id === currentCellId);
+    if (idx !== -1 && idx < this.cells.length - 1) {
+      this.focusCell(this.cells[idx + 1].id);
+    } else {
+      const newCell = this.addCell();
+      this.focusCell(newCell.id);
+    }
   }
 
   deleteCell(cellId) {
-    const idx = this.cells.findIndex((c) => c.id === cellId);
-    if (idx !== -1) {
-      const cell = this.cells[idx];
-      cell.dom.remove();
-      this.cells.splice(idx, 1);
+    const idx = this.cells.findIndex(c => c.id === cellId);
+    if (idx === -1) return;
+
+    const cell = this.cells[idx];
+    if (cell.domElement && cell.domElement.parentNode) {
+      cell.domElement.parentNode.removeChild(cell.domElement);
     }
+    this.cells.splice(idx, 1);
+
     if (this.cells.length === 0) {
       this.addCell();
+    } else {
+      const nextIdx = Math.max(0, idx - 1);
+      this.focusCell(this.cells[nextIdx].id);
+    }
+    this.drawScopeOverlay();
+  }
+
+  runAllCells() {
+    for (const c of this.cells) {
+      if (!c.isSectionHeader && c.input && c.input.trim()) {
+        this.executeCell(c.id);
+      }
     }
   }
 
   clearWorksheet() {
-    this.container.innerHTML = "";
+    this.cellsContainer.innerHTML = "";
     this.cells = [];
-    this.cellCounter = 0;
-    this.activeCellId = null;
+    this.executionCounter = 0;
+    this.plotInstances.clear();
     this.addCell();
+    this.drawScopeOverlay();
+    this.app.worker.postMessage({ type: "RESET" });
+    this.app.updateStatusMessage("Worksheet cleared.");
   }
 
-  loadImportedCells(cells) {
-    if (!cells || !cells.length) return;
-    this.container.innerHTML = "";
-    this.cells = [];
-    this.cellCounter = 0;
-    this.activeCellId = null;
+  setZoom(percent) {
+    this.zoom = percent;
+    const canvas = document.getElementById(`canvas-${this.docId}`);
+    if (canvas) {
+      canvas.style.transform = `scale(${percent / 100})`;
+      canvas.style.transformOrigin = "top center";
+    }
+    this.app.updateZoomLabel(`${percent}%`);
+  }
 
-    let pendingCollapsedSection = null;
+  setEditable(editable) {
+    this.isEditable = editable;
+    this.cells.forEach(c => {
+      if (c.domElement) {
+        const ed = c.domElement.querySelector(".cell-input-edit, .section-title-edit");
+        if (ed) ed.contentEditable = editable;
+      }
+    });
+  }
 
-    cells.forEach((c) => {
-      const inp = c.input !== undefined ? c.input : "";
-      const isSec = Boolean(c.is_section_header || c.mode === "section");
-      const isText = Boolean(c.input_mode === 2 || c.mode === "text");
+  updateSectionFolding() {
+    let currentFoldLevel = -1;
+    let isFolding = false;
 
-      if (isSec) {
-        const title = c.section_title || inp || "Section";
-        const secEl = this.addSectionHeader(title, c.section_level || 0, c.section_html, c.is_collapsed);
-        if (c.is_collapsed) {
-          pendingCollapsedSection = { el: secEl, level: c.section_level || 0 };
-        } else {
-          pendingCollapsedSection = null;
+    for (const cell of this.cells) {
+      if (cell.isSectionHeader) {
+        if (isFolding && cell.sectionLevel <= currentFoldLevel) {
+          isFolding = false;
         }
-      } else if (isText) {
-        if (inp.trim() !== "") {
-          const textEl = this.addTextCell(inp, c.embedded_images);
-          if (pendingCollapsedSection) {
-            textEl.style.display = "none";
-          }
+        if (cell.isCollapsed) {
+          isFolding = true;
+          currentFoldLevel = cell.sectionLevel;
         }
+        if (cell.domElement) cell.domElement.style.display = "flex";
       } else {
-        // Math calculation cell with cached result support
-        const cellObj = this.addCell(inp, false, c.result);
-        if (pendingCollapsedSection) {
-          cellObj.dom.style.display = "none";
+        if (cell.domElement) {
+          cell.domElement.style.display = isFolding ? "none" : "flex";
         }
       }
-    });
-
-    if (this.cells.length === 0) {
-      this.addCell("", true);
-    } else {
-      this.activeCellId = this.cells[0].id;
-      this.cells[0].dom.classList.add("focused");
     }
   }
 
-  evaluateCell(cellId) {
-    const cell = this.cells.find((c) => c.id === cellId);
+  drawScopeOverlay() {
+    if (!this.scopeCanvas) return;
+    const ctx = this.scopeCanvas.getContext("2d");
+    const rect = this.cellsContainer.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    this.scopeCanvas.width = rect.width * dpr;
+    this.scopeCanvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    const isLight = this.app.theme === "light";
+    ctx.strokeStyle = isLight ? "#8e9aaf" : "#64748b";
+    ctx.lineWidth = 1;
+
+    // Draw hierarchical vertical lines from disclosure buttons
+    for (let i = 0; i < this.cells.length; i++) {
+      const cell = this.cells[i];
+      if (!cell.isSectionHeader || cell.isCollapsed || !cell.domElement || cell.domElement.style.display === "none") {
+        continue;
+      }
+
+      const btn = cell.domElement.querySelector(".section-toggle-btn");
+      if (!btn) continue;
+
+      const btnRect = btn.getBoundingClientRect();
+      const startX = btnRect.left - rect.left + btnRect.width / 2;
+      const startY = btnRect.bottom - rect.top;
+
+      let lastY = startY;
+      for (let j = i + 1; j < this.cells.length; j++) {
+        const child = this.cells[j];
+        if (!child.domElement || child.domElement.style.display === "none") continue;
+        if (child.isSectionHeader && child.sectionLevel <= cell.sectionLevel) break;
+
+        const childRect = child.domElement.getBoundingClientRect();
+        lastY = childRect.bottom - rect.top - 4;
+      }
+
+      if (lastY > startY + 10) {
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX, lastY);
+        ctx.lineTo(startX + 8, lastY); // Horizontal tick └───
+        ctx.stroke();
+      }
+    }
+  }
+
+  insertSection(level = 0) {
+    const activeId = this.activeCellId;
+    this.addCell({
+      mode: "section",
+      isSectionHeader: true,
+      sectionLevel: level,
+      sectionTitle: level === 0 ? "Problem / Section" : "Subproblem",
+      insertAfterId: activeId
+    });
+  }
+
+  indentActiveCell() {
+    const cell = this.cells.find(c => c.id === this.activeCellId);
     if (!cell) return;
-
-    const expr = cell.inputEl.value.trim();
-    if (!expr) return;
-
-    const outputRow = cell.dom.querySelector(".cell-output-row");
-    const outputContent = cell.dom.querySelector(".output-content");
-    outputRow.style.display = "block";
-    outputContent.innerHTML = `<div class="cell-calculating"><div class="spinner-sm"></div><span>Computing with CAS engine...</span></div>`;
-
-    cell.dom.classList.add("calculating");
-
-    this.onEvaluate(cellId, expr, this.globalPrecision);
-  }
-
-  evaluateAll() {
-    this.cells.forEach((cell) => {
-      if (cell.inputEl.value.trim()) {
-        this.evaluateCell(cell.id);
+    if (cell.isSectionHeader) {
+      cell.sectionLevel = Math.min(3, cell.sectionLevel + 1);
+      if (cell.domElement) {
+        cell.domElement.className = `worksheet-cell section-header-cell level-${cell.sectionLevel}`;
       }
-    });
+      this.drawScopeOverlay();
+    }
   }
 
-  handleResult(cellId, result) {
-    const cell = this.cells.find((c) => c.id === cellId);
+  outdentActiveCell() {
+    const cell = this.cells.find(c => c.id === this.activeCellId);
     if (!cell) return;
-
-    cell.dom.classList.remove("calculating");
-    cell.result = result;
-
-    const outputRow = cell.dom.querySelector(".cell-output-row");
-    const timingBadge = cell.dom.querySelector(".timing-badge");
-    outputRow.style.display = "block";
-
-    if (timingBadge && result.execution_time_ms !== undefined) {
-      timingBadge.textContent = `${result.execution_time_ms} ms`;
-    }
-
-    if (result.error) {
-      const outputContent = cell.dom.querySelector(".output-content");
-      outputContent.innerHTML = `
-        <div class="cell-error-banner">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span>${this.escapeHtml(result.error)}</span>
-        </div>
-      `;
-      return;
-    }
-
-    this.renderMathOutput(cell);
-
-    // If this was the last cell and has non-empty input, auto-append a new cell for flow
-    const cellIndex = this.cells.indexOf(cell);
-    if (cellIndex === this.cells.length - 1) {
-      this.addCell("", true);
-    }
-  }
-
-  renderMathOutput(cell) {
-    const res = cell.result;
-    if (!res) return;
-
-    const outputContent = cell.dom.querySelector(".output-content");
-    if (!outputContent) return;
-    outputContent.innerHTML = "";
-
-    const eqLabel = cell.dom.querySelector(".math-equation-label");
-    if (eqLabel) {
-      eqLabel.textContent = `(${cell.index})`;
-    }
-
-    if (res.is_plot && res.plot_data) {
-      // Render plot canvas
-      const canvas = document.createElement("canvas");
-      canvas.className = "plot-canvas";
-      canvas.style.width = "100%";
-      canvas.style.height = "360px";
-      outputContent.appendChild(canvas);
-
-      cell.plotInstance = new MathPlotter(canvas, res.plot_data, {
-        theme: this.theme
-      });
-      return;
-    }
-
-    // Mathematical formula rendering via KaTeX
-    const isNum = cell.mode === "numeric" || this.globalMode === "numeric";
-    const latexStr = isNum ? (res.numeric_latex || res.exact_latex) : (res.exact_latex || res.numeric_latex);
-    const plainText = isNum ? (res.numeric_text || res.exact_text) : (res.exact_text || res.numeric_text);
-
-    if (latexStr && typeof katex !== "undefined") {
-      const mathEl = document.createElement("div");
-      mathEl.className = "katex-rendered-output";
-      try {
-        katex.render(latexStr, mathEl, {
-          throwOnError: false,
-          displayMode: true
-        });
-        outputContent.appendChild(mathEl);
-      } catch (err) {
-        outputContent.textContent = plainText || latexStr;
+    if (cell.isSectionHeader) {
+      cell.sectionLevel = Math.max(0, cell.sectionLevel - 1);
+      if (cell.domElement) {
+        cell.domElement.className = `worksheet-cell section-header-cell level-${cell.sectionLevel}`;
       }
-    } else {
-      const preEl = document.createElement("pre");
-      preEl.className = "plain-text-output";
-      preEl.textContent = plainText || "";
-      outputContent.appendChild(preEl);
+      this.drawScopeOverlay();
     }
   }
 
-  copyToClipboard(text, triggerBtn) {
-    navigator.clipboard.writeText(text).then(() => {
-      const origText = triggerBtn.textContent;
-      triggerBtn.textContent = "Copied!";
-      triggerBtn.classList.add("copied");
-      setTimeout(() => {
-        triggerBtn.textContent = origText;
-        triggerBtn.classList.remove("copied");
-      }, 1500);
-    });
-  }
+  loadImportedCells(cellList) {
+    this.cellsContainer.innerHTML = "";
+    this.cells = [];
+    this.executionCounter = 0;
+    this.plotInstances.clear();
 
-  escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  exportDocument(format = "markdown") {
-    let content = "";
-    const date = new Date().toISOString().split("T")[0];
-
-    if (format === "markdown") {
-      content = `# OpenMath Worksheet Export\n*Exported on ${date}*\n\n---\n\n`;
-      this.cells.forEach((cell) => {
-        const inp = cell.inputEl.value.trim();
-        if (!inp) return;
-        content += `### In [${cell.index}]\n\`\`\`\n${inp}\n\`\`\`\n\n`;
-        if (cell.result) {
-          const out = cell.result.exact_text || cell.result.exact_latex;
-          content += `### Out [${cell.index}]\n$$${cell.result.exact_latex || out}$$\n\n`;
-        }
+    for (const c of cellList) {
+      this.addCell({
+        mode: c.is_section_header ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : "2d_math")),
+        isSectionHeader: bool(c.is_section_header),
+        sectionLevel: c.section_level || 0,
+        sectionTitle: c.section_title || "",
+        input: c.input || "",
+        result: c.result || null
       });
-      this.downloadFile(content, "worksheet.md", "text/markdown");
-    } else if (format === "latex") {
-      content = `\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\begin{document}\n\\title{OpenMath Worksheet}\n\\date{${date}}\n\\maketitle\n\n`;
-      this.cells.forEach((cell) => {
-        const inp = cell.inputEl.value.trim();
-        if (!inp) return;
-        content += `\\textbf{In [${cell.index}]:} \\texttt{${inp}}\\\\\n`;
-        if (cell.result && cell.result.exact_latex) {
-          content += `\\textbf{Out [${cell.index}]:} \\[ ${cell.result.exact_latex} \\]\n\\vspace{1em}\n\n`;
-        }
-      });
-      content += "\\end{document}\n";
-      this.downloadFile(content, "worksheet.tex", "application/x-latex");
-    } else if (format === "json") {
-      const data = this.cells.map((c) => ({
-        index: c.index,
-        input: c.inputEl.value,
-        mode: c.mode,
-        result: c.result
-      }));
-      content = JSON.stringify(data, null, 2);
-      this.downloadFile(content, "worksheet.json", "application/json");
     }
+
+    this.drawScopeOverlay();
   }
 
-  downloadFile(content, filename, contentType) {
-    const blob = new Blob([content], { type: contentType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  getSerializableCells() {
+    return this.cells.map((c, idx) => ({
+      cell_id: c.id,
+      execution_idx: idx + 1,
+      input: c.input,
+      input_mode: c.mode === "text" ? 2 : (c.mode === "1d_math" ? 1 : 0),
+      is_section_header: c.isSectionHeader,
+      section_title: c.sectionTitle,
+      section_level: c.sectionLevel,
+      result: c.result
+    }));
   }
+}
+
+function bool(v) {
+  return v === true || v === "true" || v === 1;
 }

@@ -1,0 +1,92 @@
+/* OpenMath UI Themes (Light / Dark) matching ui/theme.py */
+
+:root,
+body.theme-light,
+[data-theme="light"] {
+  --bg-main: #ececec;
+  --bg-surface: #f3f3f3;
+  --bg-cell: #ffffff;
+  --bg-canvas: #f4f6f9;
+  --bg-input: #ffffff;
+  --border: #b8bcc2;
+  --border-light: #d9dcdf;
+  --border-focus: #2563eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+  --prompt-color: #b22222;
+  --math-blue: #0000aa;
+  --menu-bg: #ffffff;
+  --menu-border: #cbd5e1;
+  --menu-text: #1e293b;
+  --menu-hover-bg: #eff6ff;
+  --menu-hover-text: #2563eb;
+  --menu-sep: #e2e8f0;
+  --tab-bg: #e2e4e8;
+  --tab-active-bg: #ffffff;
+  --tab-hover-bg: #edf0f5;
+  --btn-bg: #f8fafc;
+  --btn-border: #cbd5e1;
+  --btn-hover-bg: #e2e8f0;
+  --btn-pressed-bg: #cbd5e1;
+  --status-label-bg: #fafafa;
+  --dock-title-bg: #e2e4e8;
+  --dock-border: #b8bcc2;
+  --scrollbar-bg: #f8fafc;
+  --scrollbar-border: #e2e8f0;
+  --scrollbar-handle: #94a3b8;
+  --scrollbar-handle-hover: #64748b;
+  --dialog-bg: #ffffff;
+  --dialog-card-bg: #f8fafc;
+  --dialog-text: #0f172a;
+  --dialog-border: #cbd5e1;
+  --scope-line-color: #8e9aaf;
+}
+
+body.theme-dark,
+[data-theme="dark"] {
+  --bg-main: #141b26;
+  --bg-surface: #1a2332;
+  --bg-cell: #1e2838;
+  --bg-canvas: #141b26;
+  --bg-input: #16202c;
+  --border: #2b384c;
+  --border-light: #35455e;
+  --border-focus: #38bdf8;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --accent: #38bdf8;
+  --accent-hover: #0ea5e9;
+  --accent-light: #233348;
+  --prompt-color: #fb7185;
+  --math-blue: #7dd3fc;
+  --menu-bg: #1a2332;
+  --menu-border: #2b384c;
+  --menu-text: #f8fafc;
+  --menu-hover-bg: #233348;
+  --menu-hover-text: #38bdf8;
+  --menu-sep: #2b384c;
+  --tab-bg: #161e2a;
+  --tab-active-bg: #1e2838;
+  --tab-hover-bg: #1f2a3a;
+  --btn-bg: #202b3a;
+  --btn-border: #2e3b4f;
+  --btn-hover-bg: #28364a;
+  --btn-pressed-bg: #1b2533;
+  --status-label-bg: #18202c;
+  --dock-title-bg: #1b2434;
+  --dock-border: #2b384c;
+  --scrollbar-bg: #16202c;
+  --scrollbar-border: #2b384c;
+  --scrollbar-handle: #475569;
+  --scrollbar-handle-hover: #64748b;
+  --dialog-bg: #1a2332;
+  --dialog-card-bg: #16202c;
+  --dialog-text: #f8fafc;
+  --dialog-border: #2b384c;
+  --scope-line-color: #64748b;
+}

@@ -1,6 +1,6 @@
 /**
  * OpenMath Web 2D Canvas Plotter
- * High-performance, Retina-aware 2D plotting engine for curves, polar plots, and filled regions.
+ * High-performance, Retina-aware 2D plotting engine matching OpenMath Matplotlib styles.
  */
 
 export class MathPlotter {
@@ -9,23 +9,28 @@ export class MathPlotter {
     this.ctx = canvas.getContext("2d");
     this.data = plotData;
     this.options = {
-      theme: options.theme || "dark",
-      padding: { top: 40, right: 30, bottom: 45, left: 55 },
+      theme: options.theme || "light",
+      padding: { top: 35, right: 25, bottom: 45, left: 55 },
       ...options
     };
 
-    this.colors = [
-      "#38bdf8", // cyan
-      "#f43f5e", // rose
-      "#10b981", // emerald
-      "#f59e0b", // amber
-      "#a855f7", // purple
-      "#06b6d4", // sky
-      "#ec4899"  // pink
-    ];
+    this.isLight = this.options.theme === "light";
+
+    this.colors = this.isLight
+      ? ["#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea", "#0284c7", "#ca8a04"]
+      : ["#38bdf8", "#fb7185", "#34d399", "#fbbf24", "#c084fc", "#67e8f9", "#f43f5e"];
 
     this.bounds = this.calculateBounds();
     this.initEvents();
+    this.render();
+  }
+
+  setTheme(theme) {
+    this.options.theme = theme;
+    this.isLight = theme === "light";
+    this.colors = this.isLight
+      ? ["#2563eb", "#dc2626", "#16a34a", "#ea580c", "#9333ea", "#0284c7", "#ca8a04"]
+      : ["#38bdf8", "#fb7185", "#34d399", "#fbbf24", "#c084fc", "#67e8f9", "#f43f5e"];
     this.render();
   }
 
@@ -90,7 +95,6 @@ export class MathPlotter {
       minY = -10; maxY = 10;
     }
 
-    // Add 8% margin
     const dx = (maxX - minX) * 0.08 || 1;
     const dy = (maxY - minY) * 0.08 || 1;
 
@@ -134,7 +138,7 @@ export class MathPlotter {
     const rect = this.canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     this.width = rect.width || 600;
-    this.height = rect.height || 360;
+    this.height = rect.height || 320;
 
     this.canvas.width = Math.floor(this.width * dpr);
     this.canvas.height = Math.floor(this.height * dpr);
@@ -144,267 +148,314 @@ export class MathPlotter {
   render() {
     this.resize();
     const ctx = this.ctx;
-    const isDark = this.options.theme === "dark";
+    const isLight = this.isLight;
 
-    const bgColor = isDark ? "#1e222b" : "#ffffff";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
-    const axisColor = isDark ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.25)";
-    const textColor = isDark ? "#94a3b8" : "#64748b";
+    const bgColor = isLight ? "#ffffff" : "#16202c";
+    const gridColor = isLight ? "#cbd5e1" : "#334155";
+    const axisColor = isLight ? "#64748b" : "#475569";
+    const zeroLineColor = isLight ? "#334155" : "#94a3b8";
+    const textColor = isLight ? "#1e293b" : "#f8fafc";
 
     // Clear background
     ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, this.width, this.height);
 
-    // Draw Grid & Ticks
-    this.drawGridAndAxes(ctx, gridColor, axisColor, textColor);
+    const { left, right, top, bottom } = this.options.padding;
+    const plotWidth = this.width - left - right;
+    const plotHeight = this.height - top - bottom;
 
-    // Draw Filled Regions
-    this.drawRegions(ctx);
-
-    // Draw Curves
-    this.drawCurves(ctx);
-
-    // Draw Title & Labels
-    this.drawLabels(ctx, isDark ? "#f1f5f9" : "#0f172a", textColor);
-
-    // Draw Legend
-    this.drawLegend(ctx, isDark);
-  }
-
-  drawGridAndAxes(ctx, gridColor, axisColor, textColor) {
-    const { minX, maxX, minY, maxY } = this.bounds;
-    const { left, top, right, bottom } = this.options.padding;
-    const plotRight = this.width - right;
-    const plotBottom = this.height - bottom;
-
-    // Draw Axes if within view
-    const zeroX = this.toScreenX(0);
-    const zeroY = this.toScreenY(0);
-
-    ctx.strokeStyle = axisColor;
-    ctx.lineWidth = 1.5;
-
-    // Y Axis (x = 0)
-    if (zeroX >= left && zeroX <= plotRight) {
-      ctx.beginPath();
-      ctx.moveTo(zeroX, top);
-      ctx.lineTo(zeroX, plotBottom);
-      ctx.stroke();
+    // Draw Title if available
+    if (this.data.title) {
+      ctx.fillStyle = textColor;
+      ctx.font = "bold 13px -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(this.data.title, left + plotWidth / 2, 20);
     }
 
-    // X Axis (y = 0)
-    if (zeroY >= top && zeroY <= plotBottom) {
-      ctx.beginPath();
-      ctx.moveTo(left, zeroY);
-      ctx.lineTo(plotRight, zeroY);
-      ctx.stroke();
-    }
+    // Grid ticks calculation
+    const xTicks = this.calculateTicks(this.bounds.minX, this.bounds.maxX, 8);
+    const yTicks = this.calculateTicks(this.bounds.minY, this.bounds.maxY, 6);
 
-    // Outer Border
+    // Draw Grid
     ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
-    ctx.strokeRect(left, top, plotRight - left, plotBottom - top);
+    ctx.setLineDash([4, 4]);
 
-    // Ticks & Numbers
-    const numXTicks = Math.max(4, Math.floor((plotRight - left) / 80));
-    const numYTicks = Math.max(4, Math.floor((plotBottom - top) / 50));
+    for (const xt of xTicks) {
+      const sx = this.toScreenX(xt);
+      if (sx >= left && sx <= left + plotWidth) {
+        ctx.beginPath();
+        ctx.moveTo(sx, top);
+        ctx.lineTo(sx, top + plotHeight);
+        ctx.stroke();
+      }
+    }
 
+    for (const yt of yTicks) {
+      const sy = this.toScreenY(yt);
+      if (sy >= top && sy <= top + plotHeight) {
+        ctx.beginPath();
+        ctx.moveTo(left, sy);
+        ctx.lineTo(left + plotWidth, sy);
+        ctx.stroke();
+      }
+    }
+
+    ctx.setLineDash([]);
+
+    // Draw 0 axes if within bounds
+    ctx.strokeStyle = zeroLineColor;
+    ctx.lineWidth = 1.5;
+
+    if (this.bounds.minX <= 0 && this.bounds.maxX >= 0) {
+      const sx0 = this.toScreenX(0);
+      ctx.beginPath();
+      ctx.moveTo(sx0, top);
+      ctx.lineTo(sx0, top + plotHeight);
+      ctx.stroke();
+    }
+
+    if (this.bounds.minY <= 0 && this.bounds.maxY >= 0) {
+      const sy0 = this.toScreenY(0);
+      ctx.beginPath();
+      ctx.moveTo(left, sy0);
+      ctx.lineTo(left + plotWidth, sy0);
+      ctx.stroke();
+    }
+
+    // Draw Outer Box Border
+    ctx.strokeStyle = axisColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, plotWidth, plotHeight);
+
+    // Tick labels
     ctx.fillStyle = textColor;
-    ctx.font = "11px system-ui, -apple-system, sans-serif";
+    ctx.font = "10px -apple-system, sans-serif";
+
+    // X-axis ticks
     ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-
-    // X Ticks
-    for (let i = 0; i <= numXTicks; i++) {
-      const val = minX + (i / numXTicks) * (maxX - minX);
-      const sx = this.toScreenX(val);
-      if (sx < left || sx > plotRight) continue;
-
-      // Grid line
-      ctx.strokeStyle = gridColor;
-      ctx.beginPath();
-      ctx.moveTo(sx, top);
-      ctx.lineTo(sx, plotBottom);
-      ctx.stroke();
-
-      // Tick label
-      const label = Number(val.toFixed(2)).toString();
-      ctx.fillText(label, sx, plotBottom + 8);
+    for (const xt of xTicks) {
+      const sx = this.toScreenX(xt);
+      if (sx >= left && sx <= left + plotWidth) {
+        ctx.fillText(this.formatNumber(xt), sx, top + plotHeight + 16);
+      }
     }
 
-    // Y Ticks
+    // Y-axis ticks
     ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    for (let i = 0; i <= numYTicks; i++) {
-      const val = minY + (i / numYTicks) * (maxY - minY);
-      const sy = this.toScreenY(val);
-      if (sy < top || sy > plotBottom) continue;
-
-      ctx.strokeStyle = gridColor;
-      ctx.beginPath();
-      ctx.moveTo(left, sy);
-      ctx.lineTo(plotRight, sy);
-      ctx.stroke();
-
-      const label = Number(val.toFixed(2)).toString();
-      ctx.fillText(label, left - 8, sy);
+    for (const yt of yTicks) {
+      const sy = this.toScreenY(yt);
+      if (sy >= top && sy <= top + plotHeight) {
+        ctx.fillText(this.formatNumber(yt), left - 6, sy + 3);
+      }
     }
-  }
 
-  drawRegions(ctx) {
-    if (!this.data.regions || !this.data.regions.length) return;
-    const { left, top, right, bottom } = this.options.padding;
+    // Axis Labels
+    ctx.font = "italic 11px 'Times New Roman', serif";
+    ctx.textAlign = "center";
+    ctx.fillText(this.data.x_label || "x", left + plotWidth / 2, this.height - 8);
 
     ctx.save();
-    // Clip to plot area
-    ctx.beginPath();
-    ctx.rect(left, top, this.width - left - right, this.height - top - bottom);
-    ctx.clip();
-
-    for (const reg of this.data.regions) {
-      if (!reg.x || !reg.x.length || !reg.y_min || !reg.y_max) continue;
-      const alpha = reg.alpha || 0.45;
-      ctx.fillStyle = reg.color || `rgba(56, 189, 248, ${alpha})`;
-
-      ctx.beginPath();
-      // Forward path along y_max
-      for (let i = 0; i < reg.x.length; i++) {
-        const sx = this.toScreenX(reg.x[i]);
-        const sy = this.toScreenY(reg.y_max[i]);
-        if (i === 0) ctx.moveTo(sx, sy);
-        else ctx.lineTo(sx, sy);
-      }
-      // Backward path along y_min
-      for (let i = reg.x.length - 1; i >= 0; i--) {
-        const sx = this.toScreenX(reg.x[i]);
-        const sy = this.toScreenY(reg.y_min[i]);
-        ctx.lineTo(sx, sy);
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
+    ctx.translate(14, top + plotHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(this.data.y_label || "y", 0, 0);
     ctx.restore();
-  }
 
-  drawCurves(ctx) {
-    if (!this.data.curves || !this.data.curves.length) return;
-    const { left, top, right, bottom } = this.options.padding;
-
+    // Clip rendering to plot area
     ctx.save();
     ctx.beginPath();
-    ctx.rect(left, top, this.width - left - right, this.height - top - bottom);
+    ctx.rect(left, top, plotWidth, plotHeight);
     ctx.clip();
 
-    let colorIdx = 0;
-    for (const curve of this.data.curves) {
-      if (!curve.x || !curve.y || curve.x.length === 0) continue;
-      const color = curve.color || this.colors[colorIdx % this.colors.length];
-      colorIdx++;
+    // Render Regions (Inequalities)
+    if (this.data.regions) {
+      for (const reg of this.data.regions) {
+        if (!reg.x || !reg.y_min || !reg.y_max || reg.x.length === 0) continue;
+        ctx.fillStyle = reg.color || (isLight ? "rgba(37, 99, 235, 0.2)" : "rgba(56, 189, 248, 0.25)");
+        ctx.beginPath();
 
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-
-      let started = false;
-      let lastY = null;
-      const jumpThreshold = (this.height - top - bottom) * 0.7;
-
-      for (let i = 0; i < curve.x.length; i++) {
-        const x = curve.x[i];
-        const y = curve.y[i];
-
-        if (!isFinite(x) || !isFinite(y)) {
-          started = false;
-          continue;
+        // Top edge
+        let first = true;
+        for (let i = 0; i < reg.x.length; i++) {
+          const sx = this.toScreenX(reg.x[i]);
+          const sy = this.toScreenY(reg.y_max[i]);
+          if (first) {
+            ctx.moveTo(sx, sy);
+            first = false;
+          } else {
+            ctx.lineTo(sx, sy);
+          }
         }
 
-        const sx = this.toScreenX(x);
-        const sy = this.toScreenY(y);
-
-        // Detect vertical asymptote jump
-        if (lastY !== null && Math.abs(sy - lastY) > jumpThreshold) {
-          started = false;
-        }
-
-        if (!started) {
-          ctx.moveTo(sx, sy);
-          started = true;
-        } else {
+        // Bottom edge backwards
+        for (let i = reg.x.length - 1; i >= 0; i--) {
+          const sx = this.toScreenX(reg.x[i]);
+          const sy = this.toScreenY(reg.y_min[i]);
           ctx.lineTo(sx, sy);
         }
-        lastY = sy;
+
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  drawLabels(ctx, titleColor, labelColor) {
-    const { left, top, right, bottom } = this.options.padding;
-
-    // Title
-    if (this.data.title) {
-      ctx.fillStyle = titleColor;
-      ctx.font = "bold 13px system-ui, -apple-system, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillText(this.data.title, this.width / 2, 10);
     }
 
-    // X Axis Label
-    const xLabel = this.data.x_label || "x";
-    ctx.fillStyle = labelColor;
-    ctx.font = "italic 12px system-ui, -apple-system, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(xLabel, (this.width - left - right) / 2 + left, this.height - 5);
+    // Render Curves
+    if (this.data.curves) {
+      for (let cIdx = 0; cIdx < this.data.curves.length; cIdx++) {
+        const curve = this.data.curves[cIdx];
+        if (!curve.x || !curve.y || curve.x.length === 0) continue;
 
-    // Y Axis Label
-    const yLabel = this.data.y_label || "y";
-    ctx.save();
-    ctx.translate(14, (this.height - top - bottom) / 2 + top);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = "center";
-    ctx.fillText(yLabel, 0, 0);
+        const curveColor = curve.color || this.colors[cIdx % this.colors.length];
+        ctx.strokeStyle = curveColor;
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        let isDrawing = false;
+
+        for (let i = 0; i < curve.x.length; i++) {
+          const x = curve.x[i];
+          const y = curve.y[i];
+
+          if (!isFinite(x) || !isFinite(y) || isNaN(x) || isNaN(y)) {
+            isDrawing = false;
+            continue;
+          }
+
+          const sx = this.toScreenX(x);
+          const sy = this.toScreenY(y);
+
+          if (!isDrawing) {
+            ctx.moveTo(sx, sy);
+            isDrawing = true;
+          } else {
+            ctx.lineTo(sx, sy);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+
     ctx.restore();
+
+    // Render Legend if multiple curves exist or labeled
+    const labeled = (this.data.curves || []).filter(c => c.label && c.label.trim() !== "");
+    if (labeled.length > 0) {
+      let legendX = left + plotWidth - 10;
+      let legendY = top + 15;
+      ctx.font = "10px -apple-system, sans-serif";
+
+      for (let i = 0; i < labeled.length; i++) {
+        const c = labeled[i];
+        const color = c.color || this.colors[i % this.colors.length];
+
+        ctx.textAlign = "right";
+        ctx.fillStyle = textColor;
+        ctx.fillText(c.label, legendX, legendY);
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(legendX - ctx.measureText(c.label).width - 18, legendY - 3);
+        ctx.lineTo(legendX - ctx.measureText(c.label).width - 4, legendY - 3);
+        ctx.stroke();
+
+        legendY += 16;
+      }
+    }
   }
 
-  drawLegend(ctx, isDark) {
-    if (!this.data.curves || this.data.curves.length <= 1) return;
-    const validCurves = this.data.curves.filter(c => c.label);
-    if (!validCurves.length) return;
+  calculateTicks(min, max, count) {
+    const span = max - min;
+    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    const possibleSteps = [step, step * 2, step * 5, step * 10];
+    let bestStep = possibleSteps[0];
+    let minDiff = Infinity;
 
-    const { right, top } = this.options.padding;
-    const legendX = this.width - right - 130;
-    const legendY = top + 10;
+    for (const s of possibleSteps) {
+      const diff = Math.abs(span / s - count);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestStep = s;
+      }
+    }
 
-    ctx.fillStyle = isDark ? "rgba(30, 34, 43, 0.85)" : "rgba(255, 255, 255, 0.85)";
-    ctx.strokeStyle = isDark ? "#3a4150" : "#e2e8f0";
-    ctx.lineWidth = 1;
-    ctx.fillRect(legendX, legendY, 120, validCurves.length * 20 + 8);
-    ctx.strokeRect(legendX, legendY, 120, validCurves.length * 20 + 8);
+    const firstTick = Math.ceil(min / bestStep) * bestStep;
+    const ticks = [];
+    for (let t = firstTick; t <= max; t += bestStep) {
+      ticks.push(t);
+    }
+    return ticks;
+  }
 
-    ctx.font = "11px system-ui, -apple-system, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-
-    validCurves.forEach((curve, i) => {
-      const cy = legendY + 12 + i * 20;
-      ctx.strokeStyle = curve.color || this.colors[i % this.colors.length];
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(legendX + 8, cy);
-      ctx.lineTo(legendX + 24, cy);
-      ctx.stroke();
-
-      ctx.fillStyle = isDark ? "#f1f5f9" : "#0f172a";
-      ctx.fillText(curve.label, legendX + 30, cy);
-    });
+  formatNumber(val) {
+    if (Math.abs(val) < 1e-9) return "0";
+    if (Math.abs(val) >= 10000 || Math.abs(val) < 0.01) {
+      return val.toExponential(1);
+    }
+    return parseFloat(val.toFixed(2)).toString();
   }
 
   initEvents() {
-    window.addEventListener("resize", () => {
+    let isPanning = false;
+    let startX = 0, startY = 0;
+    let initialBounds = null;
+
+    this.canvas.addEventListener("mousedown", (e) => {
+      isPanning = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      initialBounds = { ...this.bounds };
+      this.canvas.style.cursor = "grabbing";
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!isPanning || !initialBounds) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      const { left, right, top, bottom } = this.options.padding;
+      const plotWidth = this.width - left - right;
+      const plotHeight = this.height - top - bottom;
+
+      const xSpan = initialBounds.maxX - initialBounds.minX;
+      const ySpan = initialBounds.maxY - initialBounds.minY;
+
+      const mathDx = -(dx / plotWidth) * xSpan;
+      const mathDy = (dy / plotHeight) * ySpan;
+
+      this.bounds.minX = initialBounds.minX + mathDx;
+      this.bounds.maxX = initialBounds.maxX + mathDx;
+      this.bounds.minY = initialBounds.minY + mathDy;
+      this.bounds.maxY = initialBounds.maxY + mathDy;
+
       this.render();
     });
+
+    window.addEventListener("mouseup", () => {
+      if (isPanning) {
+        isPanning = false;
+        this.canvas.style.cursor = "default";
+      }
+    });
+
+    // Zoom on wheel
+    this.canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 0.9 : 1.1;
+
+      const rect = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const centerMathX = this.toMathX(mouseX);
+      const centerMathY = this.toMathY(mouseY);
+
+      this.bounds.minX = centerMathX + (this.bounds.minX - centerMathX) * zoomFactor;
+      this.bounds.maxX = centerMathX + (this.bounds.maxX - centerMathX) * zoomFactor;
+      this.bounds.minY = centerMathY + (this.bounds.minY - centerMathY) * zoomFactor;
+      this.bounds.maxY = centerMathY + (this.bounds.maxY - centerMathY) * zoomFactor;
+
+      this.render();
+    }, { passive: false });
   }
 }
