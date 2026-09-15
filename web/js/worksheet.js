@@ -363,6 +363,17 @@ export class WorksheetView {
       return;
     }
 
+    // Show non-blocking evaluating indicator in cell output container
+    const outContainer = cell.domElement && cell.domElement.querySelector(".cell-output-container");
+    if (outContainer) {
+      outContainer.innerHTML = `
+        <div style="display:flex; justify-content:center; align-items:center; padding: 6px 0; color: var(--text-muted); font-size: 11px;">
+          <span class="cas-init-spinner" style="width:11px; height:11px; border-width:2px; margin-right:6px;"></span>
+          <span>${this.app.isWorkerReady ? "Evaluating..." : "Waiting for CAS engine..."}</span>
+        </div>
+      `;
+    }
+
     this.app.worker.postMessage({
       type: "EVALUATE",
       id: cell.id,
@@ -371,7 +382,7 @@ export class WorksheetView {
       precision: this.app.precision || 10
     });
 
-    this.app.updateStatusMessage("Evaluating...");
+    this.app.updateStatusMessage(this.app.isWorkerReady ? "Evaluating..." : '<span class="cas-init-spinner"></span> Evaluating expression (waiting for CAS engine)...');
   }
 
   handleCellResult(resultData) {
@@ -396,6 +407,9 @@ export class WorksheetView {
     this.app.palette.refreshVariables();
     if (resultData.execution_time_ms) {
       this.app.updateExecutionTime(resultData.execution_time_ms / 1000);
+    }
+    if (this.app.updateMemoryGauge) {
+      this.app.updateMemoryGauge();
     }
     this.app.updateStatusMessage("Ready");
   }

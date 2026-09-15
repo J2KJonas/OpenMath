@@ -20,8 +20,12 @@
   <link rel="stylesheet" href="./css/dialogs.css" />
 </head>
 <body class="theme-light">
-  <!-- Loading Splash Overlay -->
-  <div id="loading-overlay" class="modal-backdrop open" style="background-color: rgba(236, 236, 236, 0.96); z-index: 9999;">
+  <!-- Hidden Persistent File and Image Inputs -->
+  <input type="file" id="app-file-input" style="display: none;" accept=".mw,.mv,.json,.txt,.zip" />
+  <input type="file" id="app-image-input" style="display: none;" accept="image/*" />
+
+  <!-- Loading Splash Overlay (Hidden by default for instant UI display) -->
+  <div id="loading-overlay" class="modal-backdrop" style="display: none; background-color: rgba(236, 236, 236, 0.96); z-index: 9999;">
     <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); padding: 32px 40px; text-align: center; max-width: 440px; width: 90%;">
       <img src="./favicon.png" alt="OpenMath" width="56" height="56" style="margin-bottom: 12px;" />
       <h2 style="font-size: 20px; font-weight: bold; color: #1e3a8a; margin-bottom: 4px;">OpenMath</h2>
@@ -124,6 +128,7 @@
           <button class="menu-action" data-action="toggle_mode_f5"><span>Toggle 1-D / 2-D Math</span><span class="shortcut">F5</span></button>
           <div class="menu-sep"></div>
           <button class="menu-action" data-action="matrix_wizard"><span>Matrix Wizard...</span><span class="shortcut">Ctrl+M</span></button>
+          <button class="menu-action" data-action="insert_image"><span>Image...</span></button>
           <div class="menu-sep"></div>
           <button class="menu-action" data-action="insert_template" data-arg="polygonOmråde(Uligheder, x = 0 .. 10, y = 0 .. 10)"><span>polygonOmråde Linear Inequality Region</span></button>
           <button class="menu-action" data-action="insert_template" data-arg="LPplot(30*x + 20*y, Uligheder, [100, 200, 300])"><span>LPplot Level Curves</span></button>
@@ -1125,6 +1130,8 @@
         <button class="dialog-btn dialog-cancel-btn">Cancel</button>
         <button id="btn-confirm-export-pdf" class="dialog-btn primary">Export as PDF...</button>
       </div>
+    </div>
+
     <!-- Dialog 6: Alert / Notification -->
     <div id="dialog-alert" class="modal-dialog" style="width: 440px; display: none;">
       <div class="modal-header">
