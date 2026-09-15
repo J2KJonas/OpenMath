@@ -210,29 +210,9 @@ body.theme-dark .start-dev-btn:hover {
   background-color: rgba(37, 99, 235, 0.06);
 }
 
-/* Left Group Bracket Indicator `[` */
+/* Left Group Bracket Indicator `[` - Disabled: brackets are only for section/subsection hierarchies */
 .cell-bracket-bar {
-  position: absolute;
-  left: 2px;
-  top: 1px;
-  bottom: 1px;
-  width: 6px;
-  border-left: 1.5px solid #8e9aaf;
-  border-top: 1.5px solid #8e9aaf;
-  border-bottom: 1.5px solid #8e9aaf;
-  pointer-events: none;
-}
-
-.worksheet-cell.active > .cell-bracket-bar {
-  border-color: #2563eb;
-}
-
-body.theme-dark .cell-bracket-bar {
-  border-color: #64748b;
-}
-
-body.theme-dark .worksheet-cell.active > .cell-bracket-bar {
-  border-color: #60a5fa;
+  display: none !important;
 }
 
 /* Input Row */

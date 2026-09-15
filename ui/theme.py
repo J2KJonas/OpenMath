@@ -27,7 +27,7 @@ class Theme:
     OPENMATH_ACCENT = "#2563eb"          # Royal blue
     OPENMATH_ACCENT_HOVER = "#1d4ed8"
     OPENMATH_PROMPT = "#b22222"          # Dark red prompt
-    OPENMATH_MATH_BLUE = "#0000aa"       # Signature output blue
+    OPENMATH_MATH_BLUE = "#0044cc"       # Signature output blue
     OPENMATH_MATPLOTLIB_BG = "#ffffff"
     OPENMATH_MATPLOTLIB_TEXT = "#000000"
 
@@ -45,7 +45,7 @@ class Theme:
     DARK_ACCENT = "#38bdf8"           # Glowing cyan accent
     DARK_ACCENT_HOVER = "#0ea5e9"     # Sky blue hover
     DARK_PROMPT = "#fb7185"           # Glowing neon coral prompt
-    DARK_MATH_BLUE = "#7dd3fc"        # Signature glowing math output blue
+    DARK_MATH_BLUE = "#60a5fa"        # Signature glowing math output blue
     DARK_MATPLOTLIB_BG = "#16202c"
     DARK_MATPLOTLIB_TEXT = "#f8fafc"
 

@@ -302,13 +302,13 @@ class MathRendererWidget(QWidget):
         else:
             math_text = raw_latex
 
-        # Text and background colors (signature royal blue #0000aa for math output)
+        # Text and background colors (signature clear royal blue for light mode, bright sky blue for dark mode)
         if color:
             text_color = color
-        elif theme_mode == Theme.LIGHT:
-            text_color = "#0000aa"
+        elif theme_mode == Theme.DARK:
+            text_color = Theme.DARK_MATH_BLUE
         else:
-            text_color = "#93c5fd"
+            text_color = Theme.OPENMATH_MATH_BLUE
 
         dpi = int(144 * max(1.0, dpi_scale))
 

@@ -17,13 +17,13 @@ A desktop mathematical calculator application focusing on symbolic computation, 
 ## 📸 Application Showcase
 
 <div align="center">
-  <img src="resources/screenshots/openmath_desktop_light.png" alt="OpenMath Academic Light Theme" width="48%" />
-  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Dark Mode Tables" width="48%" />
+  <img src="resources/screenshots/openmath_desktop_light.png" alt="OpenMath Academic Light Theme - Symbolic Calculus" width="48%" />
+  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Linear Algebra and 2D Plotter" width="48%" />
 </div>
 
 <div align="center" style="margin-top: 10px;">
-  <img src="resources/screenshots/openmath_sections_tree.png" alt="OpenMath Hierarchical Sections" width="48%" />
-  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Typeset Calculus" width="48%" />
+  <img src="resources/screenshots/openmath_sections_tree.png" alt="OpenMath Hierarchical Section Folding" width="48%" />
+  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Dark Mode and Interactive Tables" width="48%" />
 </div>
 
 ---

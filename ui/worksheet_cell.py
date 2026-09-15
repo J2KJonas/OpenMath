@@ -11003,43 +11003,16 @@ class CellOutputBox(QFrame):
 class CellBracketBar(QWidget):
     """
     Execution Group left bracket '[' widget.
-    Draws the classic vertical bracket line grouping input and output together.
+    (Disabled: Brackets are reserved exclusively for section and subsection hierarchies).
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(10)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def mousePressEvent(self, event):
-        parent_cell = self.parent()
-        while parent_cell and not hasattr(parent_cell, 'deleteRequested'):
-            parent_cell = parent_cell.parent()
-        if parent_cell and hasattr(parent_cell, '_get_worksheet_view'):
-            ws = parent_cell._get_worksheet_view()
-            if ws:
-                mods = event.modifiers()
-                if mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier):
-                    ws.select_cell(parent_cell, additive=True)
-                elif mods & Qt.KeyboardModifier.ShiftModifier:
-                    ws.select_cell(parent_cell, range_select=True)
-                else:
-                    ws.select_cell(parent_cell, additive=False)
-                event.accept()
-                return
-        super().mousePressEvent(event)
+        self.setFixedWidth(0)
+        self.setVisible(False)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        pen = QPen(QColor("#7c8798"), 1)
-        painter.setPen(pen)
-        w = self.width()
-        h = self.height()
-        # Draw bracket '[': top tick, vertical line, bottom tick
-        painter.drawLine(w - 2, 2, w - 8, 2)
-        painter.drawLine(w - 8, 2, w - 8, h - 3)
-        painter.drawLine(w - 8, h - 3, w - 2, h - 3)
+        pass
 
 
 class DraggableAxisLabel(mob.DraggableBase):
@@ -12101,12 +12074,14 @@ class WorksheetCell(QFrame):
             self.output_row_layout.setContentsMargins(20, 4, 16, 4)
             self.output_row_layout.setSpacing(8)
 
-            self._math_renderer = MathRendererWidget("", font_size=15, theme_mode=Theme.LIGHT, parent=self._output_row)
+            cur_theme = getattr(self, 'theme_mode', Theme.LIGHT)
+            self._math_renderer = MathRendererWidget("", font_size=15, theme_mode=cur_theme, parent=self._output_row)
             self.output_row_layout.addWidget(self._math_renderer, 1)
 
             self._lbl_eq_label = QLabel(f"({self.execution_idx})", self._output_row)
             self._lbl_eq_label.setFont(QFont("Times New Roman", 13))
-            self._lbl_eq_label.setStyleSheet("color: #0000aa; font-weight: 500;")
+            eq_col = Theme.DARK_MATH_BLUE if cur_theme == Theme.DARK else Theme.OPENMATH_MATH_BLUE
+            self._lbl_eq_label.setStyleSheet(f"color: {eq_col}; font-weight: 500;")
             self._lbl_eq_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.output_row_layout.addWidget(self._lbl_eq_label, 0, Qt.AlignmentFlag.AlignRight)
 
@@ -12266,7 +12241,7 @@ class WorksheetCell(QFrame):
             is_text_or_img = (self.input_mode == self.MODE_TEXT) or has_img
             show_prompt = is_ws_mode and not is_text_or_img
             self.lbl_prompt.setVisible(show_prompt)
-            self.bracket_bar.setVisible(show_prompt)
+            self.bracket_bar.setVisible(False)
         else:
             self.lbl_prompt.setVisible(False)
             self.bracket_bar.setVisible(False)
@@ -12598,7 +12573,7 @@ class WorksheetCell(QFrame):
             if hasattr(self, 'lbl_prompt'):
                 self.lbl_prompt.setVisible(True)
             if hasattr(self, 'bracket_bar'):
-                self.bracket_bar.setVisible(True)
+                self.bracket_bar.setVisible(False)
 
         if mode == self.MODE_2D_MATH:
             prompt_font = QFont(fam, display_sz, QFont.Weight.Bold)
