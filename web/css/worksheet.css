@@ -336,8 +336,8 @@ body.theme-dark .start-dev-btn:hover {
 }
 
 .section-title-edit {
-  font-weight: bold;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 16px;
   color: var(--text-primary);
   outline: none;
   border: none;
@@ -345,8 +345,34 @@ body.theme-dark .start-dev-btn:hover {
   flex: 1;
 }
 
+.section-header-cell.level-0 .section-title-edit {
+  font-size: 16px;
+  font-weight: 700;
+}
+
 .section-header-cell.level-1 .section-title-edit {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.section-header-cell.level-2 .section-title-edit {
   font-size: 13px;
+  font-weight: 600;
+}
+
+.section-header-cell.level-3 .section-title-edit,
+.section-header-cell.level-4 .section-title-edit {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.worksheet-cell.table-cell .cell-bracket-bar,
+.worksheet-cell.table-cell .cell-prompt {
+  display: none !important;
+}
+
+.worksheet-cell table {
+  max-width: 100%;
 }
 
 /* Plot Container inside Cell */
