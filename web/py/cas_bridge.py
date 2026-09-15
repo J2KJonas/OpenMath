@@ -165,6 +165,238 @@ def get_help_catalog() -> list:
     except Exception as e:
         return []
 
+def _parse_xml_worksheet_fallback(content: str) -> list:
+    """
+    Robust fallback XML parser for .mw worksheets where standard WorksheetIO returned empty or missed equations.
+    Handles bare equations, non-standard text-field nesting, presentation blocks, tables, images, and outputs.
+    """
+    import xml.etree.ElementTree as ET
+    import re
+    import uuid
+
+    cells = []
+    exec_idx = 1
+
+    sanitized = re.sub(r'&(?!amp;|lt;|gt;|apos;|quot;)', '&amp;', content)
+    try:
+        root = ET.fromstring(sanitized)
+    except Exception:
+        try:
+            root = ET.fromstring(content)
+        except Exception:
+            return []
+
+    def clean_text(t: str) -> str:
+        if not t:
+            return ""
+        t = t.replace('\xa0', ' ').strip()
+        return re.sub(r'\bJSFH\b', '', t).strip()
+
+    def get_eq_math(eq_elem) -> str:
+        inp_eq = eq_elem.attrib.get('input-equation', '').strip()
+        if inp_eq and not inp_eq.startswith('JSFH') and not (inp_eq.startswith('LUkl') or inp_eq.startswith('eN')):
+            return inp_eq
+        disp = eq_elem.attrib.get('display', '').strip()
+        if disp and not disp.startswith('JSFH'):
+            try:
+                from cas_engine.typesetting_parser import batch_decode_displays
+                m_str, l_str = batch_decode_displays([disp])[0]
+                if m_str and m_str != 'JSFH':
+                    return m_str
+            except Exception:
+                pass
+            if not (disp.startswith('LUkl') or disp.startswith('eN')):
+                return disp
+        t = ''.join(eq_elem.itertext()).strip()
+        if t and t != 'JSFH' and not (t.startswith('LUkl') or t.startswith('eN')):
+            return t
+        return ""
+
+    def process_node(node, depth=0):
+        nonlocal exec_idx
+        tag = node.tag
+
+        if tag == 'Section':
+            title_elem = node.find('Title')
+            sec_title = clean_text(''.join(title_elem.itertext())) if title_elem is not None else ""
+            is_col = node.attrib.get('collapsed', 'false').lower() == 'true'
+            cells.append({
+                'cell_id': str(uuid.uuid4())[:8],
+                'execution_idx': exec_idx,
+                'input': sec_title,
+                'input_mode': 2,
+                'mode': 'section',
+                'is_section_header': True,
+                'section_title': sec_title,
+                'section_level': depth,
+                'is_collapsed': is_col,
+                'result': None
+            })
+            exec_idx += 1
+            for child in node:
+                if child.tag != 'Title':
+                    process_node(child, depth + 1)
+            return
+
+        elif tag in ('Group', 'Presentation-Block'):
+            inp = node.find('Input')
+            out = node.find('Output')
+            search_scope = inp if inp is not None else node
+
+            # Check for embedded images
+            imgs = search_scope.findall('.//Image')
+            for img in imgs:
+                raw_img_text = img.text or ""
+                try:
+                    from cas_engine.mw_importer import decode_worksheet_image
+                    import base64
+                    img_bytes = decode_worksheet_image(raw_img_text)
+                    if img_bytes:
+                        img_b64 = base64.b64encode(img_bytes).decode('ascii')
+                        img_tag = f'<img src="data:image/png;base64,{img_b64}" style="max-width:100%;" />'
+                        cells.append({
+                            'cell_id': str(uuid.uuid4())[:8],
+                            'execution_idx': exec_idx,
+                            'input': img_tag,
+                            'input_mode': 2,
+                            'mode': 'text',
+                            'is_section_header': False,
+                            'section_level': depth,
+                            'result': None
+                        })
+                        exec_idx += 1
+                except Exception:
+                    pass
+
+            # Extract Output result if present in group
+            out_res = None
+            if out is not None:
+                for out_eq in list(out.iter('Equation')) + list(out.iter('Math')):
+                    om = get_eq_math(out_eq)
+                    if om:
+                        out_res = {
+                            'exact_text': om,
+                            'exact_latex': om,
+                            'numeric_text': om,
+                            'numeric_latex': om,
+                            'result_type': 'Symbolic',
+                            'is_plot': False
+                        }
+                        break
+                if not out_res:
+                    for out_tf in out.iter('Text-field'):
+                        otxt = clean_text(''.join(out_tf.itertext()))
+                        if otxt and not (otxt.startswith('LUkl') or otxt.startswith('eN')):
+                            out_res = {
+                                'exact_text': otxt,
+                                'exact_latex': otxt,
+                                'numeric_text': otxt,
+                                'numeric_latex': otxt,
+                                'result_type': 'Symbolic',
+                                'is_plot': False
+                            }
+                            break
+
+            # Find equations strictly in search_scope (not in output)
+            eqs = []
+            for eq in list(search_scope.iter('Equation')) + list(search_scope.iter('Math')):
+                if out is not None and eq in list(out.iter()):
+                    continue
+                eqs.append(eq)
+
+            if eqs:
+                for eq in eqs:
+                    m_val = get_eq_math(eq)
+                    if m_val:
+                        is_exec = eq.attrib.get('executable', 'true').lower() != 'false'
+                        cells.append({
+                            'cell_id': str(uuid.uuid4())[:8],
+                            'execution_idx': exec_idx,
+                            'input': m_val,
+                            'input_mode': 0 if is_exec else 3,
+                            'mode': 'math',
+                            'is_section_header': False,
+                            'section_level': depth,
+                            'result': out_res
+                        })
+                        exec_idx += 1
+                        out_res = None  # Attach output to first input equation
+                return
+
+            # Check for input text fields
+            for tf in search_scope.iter('Text-field'):
+                prompt = tf.attrib.get('prompt', '')
+                style = tf.attrib.get('style', '')
+                tf_text = clean_text(''.join(tf.itertext()))
+                if tf_text and not (tf_text.startswith('LUkl') or tf_text.startswith('eN')):
+                    is_1d = (style in ('Maple Input', 'OpenMath Input', '1D Input')) or (prompt.strip() == '>')
+                    cells.append({
+                        'cell_id': str(uuid.uuid4())[:8],
+                        'execution_idx': exec_idx,
+                        'input': tf_text,
+                        'input_mode': 1 if is_1d else 2,
+                        'mode': '1d_math' if is_1d else 'text',
+                        'is_section_header': False,
+                        'section_level': depth,
+                        'result': out_res if is_1d else None
+                    })
+                    exec_idx += 1
+            return
+
+        elif tag == 'Input':
+            for child in node:
+                process_node(child, depth)
+            return
+
+        elif tag in ('Table', 'table'):
+            rows = []
+            for row in node.iter('Table-Row'):
+                tds = []
+                for cell in row.iter('Table-Cell'):
+                    c_txt = clean_text(''.join(cell.itertext())) or '&nbsp;'
+                    tds.append(f'<td style="border: 1px solid #d0d8e0; padding: 4px 8px;">{c_txt}</td>')
+                if tds:
+                    rows.append('<tr>' + ''.join(tds) + '</tr>')
+            if rows:
+                table_html = f'<table style="border-collapse: collapse; width: 100%; border: 1px solid #b0b8c0;"><tbody>{"".join(rows)}</tbody></table>'
+                cells.append({
+                    'cell_id': str(uuid.uuid4())[:8],
+                    'execution_idx': exec_idx,
+                    'input': table_html,
+                    'input_mode': 2,
+                    'mode': 'text',
+                    'is_section_header': False,
+                    'section_level': depth,
+                    'result': None
+                })
+                exec_idx += 1
+            return
+
+        for child in node:
+            process_node(child, depth)
+
+    for child in root:
+        process_node(child, 0)
+
+    if not cells:
+        all_eqs = list(root.iter('Equation')) + list(root.iter('Math'))
+        for eq in all_eqs:
+            m_val = get_eq_math(eq)
+            if m_val:
+                cells.append({
+                    'cell_id': str(uuid.uuid4())[:8],
+                    'execution_idx': exec_idx,
+                    'input': m_val,
+                    'input_mode': 0,
+                    'mode': 'math',
+                    'is_section_header': False,
+                    'section_level': 0,
+                    'result': None
+                })
+                exec_idx += 1
+
+    return cells
+
 def parse_worksheet_document(content: str, filename: str = None) -> dict:
     """
     Parse .mw, .mv, .json, or plain text worksheet file content.
@@ -235,58 +467,65 @@ def parse_worksheet_document(content: str, filename: str = None) -> dict:
             pass
 
     # Native .mw / .mv XML worksheet support
-    try:
-        from cas_engine.mw_importer import WorksheetIO
-        raw_cells = WorksheetIO.load_mw_string(content)
+    if stripped.startswith('<'):
         parsed = []
-        for c in raw_cells:
-            inp = (c.get('input', '') or '').strip()
-            is_sec = bool(c.get('is_section_header', False))
-            title = (c.get('section_title', '') or '').strip()
-            mode_val = c.get('input_mode', 0)
-            mode_str = "section" if is_sec else ("text" if mode_val == 2 else "math")
+        try:
+            from cas_engine.mw_importer import WorksheetIO
+            raw_cells = WorksheetIO.load_mw_string(content)
+            for c in raw_cells:
+                inp = (c.get('input', '') or '').strip()
+                is_sec = bool(c.get('is_section_header', False))
+                title = (c.get('section_title', '') or '').strip()
+                mode_val = c.get('input_mode', 0)
+                mode_str = "section" if is_sec else ("text" if mode_val == 2 else "math")
 
-            res_dict = c.get('result')
-            clean_res = None
-            if res_dict:
-                exact_latex = res_dict.get('exact_latex') or ''
-                exact_text = res_dict.get('exact_text') or ''
-                if not exact_latex and exact_text:
-                    exact_latex = exact_text
-                numeric_latex = res_dict.get('numeric_latex') or exact_latex
-                numeric_text = res_dict.get('numeric_text') or exact_text
-                clean_res = {
-                    'exact_latex': exact_latex,
-                    'exact_text': exact_text,
-                    'numeric_latex': numeric_latex,
-                    'numeric_text': numeric_text,
-                    'is_plot': bool(res_dict.get('is_plot', False)),
-                    'result_type': res_dict.get('result_type', 'Symbolic')
-                }
+                res_dict = c.get('result')
+                clean_res = None
+                if res_dict:
+                    exact_latex = res_dict.get('exact_latex') or ''
+                    exact_text = res_dict.get('exact_text') or ''
+                    if not exact_latex and exact_text:
+                        exact_latex = exact_text
+                    numeric_latex = res_dict.get('numeric_latex') or exact_latex
+                    numeric_text = res_dict.get('numeric_text') or exact_text
+                    clean_res = {
+                        'exact_latex': exact_latex,
+                        'exact_text': exact_text,
+                        'numeric_latex': numeric_latex,
+                        'numeric_text': numeric_text,
+                        'is_plot': bool(res_dict.get('is_plot', False)),
+                        'result_type': res_dict.get('result_type', 'Symbolic')
+                    }
 
-            parsed.append({
-                'cell_id': c.get('cell_id') or str(uuid.uuid4())[:8],
-                'execution_idx': c.get('execution_idx', len(parsed) + 1),
-                'input': inp,
-                'input_mode': mode_val,
-                'mode': mode_str,
-                'is_section_header': is_sec,
-                'section_title': title or inp,
-                'section_level': c.get('section_level', 0),
-                'is_collapsed': bool(c.get('is_collapsed', False)),
-                'section_bg_colors': c.get('section_bg_colors', []),
-                'section_html': c.get('section_html', ''),
-                'embedded_images': c.get('embedded_images', {}),
-                'result': clean_res,
-                'error': c.get('error')
-            })
+                parsed.append({
+                    'cell_id': c.get('cell_id') or str(uuid.uuid4())[:8],
+                    'execution_idx': c.get('execution_idx', len(parsed) + 1),
+                    'input': inp,
+                    'input_mode': mode_val,
+                    'mode': mode_str,
+                    'is_section_header': is_sec,
+                    'section_title': title or inp,
+                    'section_level': c.get('section_level', 0),
+                    'is_collapsed': bool(c.get('is_collapsed', False)),
+                    'section_bg_colors': c.get('section_bg_colors', []),
+                    'section_html': c.get('section_html', ''),
+                    'embedded_images': c.get('embedded_images', {}),
+                    'result': clean_res,
+                    'error': c.get('error')
+                })
+        except Exception:
+            parsed = []
+
+        # If WorksheetIO returned no cells, or fallback finds more complete cell structure (e.g. bare equations), use fallback
+        fb = _parse_xml_worksheet_fallback(content)
+        if not parsed or len(fb) > len(parsed):
+            parsed = fb
 
         if parsed:
             return {"cells": parsed, "error": None}
-    except Exception:
-        pass
+        return {"cells": [], "error": "No valid math equations or text cells found in the XML document."}
 
-    # Plain text fallback: line by line or markdown headers
+    # Plain text fallback: line by line or markdown headers (ONLY for non-XML/non-JSON text files)
     lines = [line.strip() for line in stripped.splitlines() if line.strip()]
     fallback_cells = []
     for line in lines:

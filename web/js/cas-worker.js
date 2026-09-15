@@ -156,8 +156,12 @@ import json
     // Drain queued requests
     while (pendingMessages.length > 0) {
       const queued = pendingMessages.shift();
-      if (queued && queued.type === "PARSE_DOCUMENT") {
-        executeParseDocument(queued);
+      if (queued) {
+        if (queued.type === "PARSE_DOCUMENT") {
+          executeParseDocument(queued);
+        } else if (queued.type === "EVALUATE") {
+          executeEvaluate(queued);
+        }
       }
     }
   } catch (err) {
@@ -166,6 +170,31 @@ import json
       type: "ERROR",
       status: "error",
       message: `Failed to initialize CAS engine: ${err.message}`
+    });
+  }
+}
+
+function executeEvaluate(data) {
+  try {
+    pyodide.globals.set("_eval_expr_input", data.expr || "");
+    pyodide.globals.set("_eval_prec_input", parseInt(data.precision || 10, 10));
+
+    const resultJson = pyodide.runPython(`
+json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec_input))
+`);
+    const parsed = JSON.parse(resultJson);
+    postMessage({
+      type: "RESULT",
+      id: data.id,
+      docId: data.docId,
+      ...parsed
+    });
+  } catch (err) {
+    postMessage({
+      type: "RESULT",
+      id: data.id,
+      docId: data.docId,
+      error: `Worker Error: ${err.message}`
     });
   }
 }
@@ -185,36 +214,15 @@ self.onmessage = async function (e) {
 
     case "EVALUATE":
       if (!isInitialized) {
+        pendingMessages.push(data);
         postMessage({
-          type: "RESULT",
-          id: data.id,
-          docId: data.docId,
-          error: "CAS engine is still initializing. Please wait a moment..."
+          type: "STATUS",
+          status: "loading",
+          message: "Evaluating expression (waiting for CAS engine)..."
         });
         return;
       }
-      try {
-        pyodide.globals.set("_eval_expr_input", data.expr || "");
-        pyodide.globals.set("_eval_prec_input", parseInt(data.precision || 10, 10));
-
-        const resultJson = pyodide.runPython(`
-json.dumps(cas_bridge.evaluate_expression(_eval_expr_input, precision=_eval_prec_input))
-`);
-        const parsed = JSON.parse(resultJson);
-        postMessage({
-          type: "RESULT",
-          id: data.id,
-          docId: data.docId,
-          ...parsed
-        });
-      } catch (err) {
-        postMessage({
-          type: "RESULT",
-          id: data.id,
-          docId: data.docId,
-          error: `Worker Error: ${err.message}`
-        });
-      }
+      executeEvaluate(data);
       break;
 
     case "RESET":

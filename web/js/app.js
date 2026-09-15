@@ -27,27 +27,31 @@ class OpenMathApplication {
     this.contextPanel = null;
     this.dialogManager = null;
     this.helpCatalog = [];
+    this.isWorkerReady = false;
   }
 
   init() {
     this.applyTheme(this.theme);
-    this.initWorker();
     this.initLayoutComponents();
     this.initMenubar();
     this.initMainToolbar();
     this.initContextBar();
     this.initStatusBar();
     this.initGlobalShortcuts();
+    this.initDragAndDrop();
     window.addEventListener("resize", () => this.updateTabOverflow());
 
     // Start with Start.mw (default start page matching ui/main_window.py)
     this.createStartPageDocument();
+
+    // Start CAS worker in background without blocking UI
+    this.initWorker();
   }
 
-  // 1. Worker Setup
+  // 1. Worker Setup (Non-blocking background initialization)
   initWorker() {
-    const loadingOverlay = document.getElementById("loading-overlay");
     const loadingStatus = document.getElementById("loading-status");
+    this.updateStatusMessage('<span class="cas-init-spinner"></span> Initializing CAS engine (SymPy & NumPy)...');
 
     try {
       this.worker = new Worker("./js/cas-worker.js");
@@ -59,15 +63,17 @@ class OpenMathApplication {
         switch (data.type) {
           case "STATUS":
             if (loadingStatus) loadingStatus.textContent = data.message;
-            this.updateStatusMessage(data.message);
+            if (data.status === "loading") {
+              this.updateStatusMessage(`<span class="cas-init-spinner"></span> ${data.message}`);
+            } else {
+              this.updateStatusMessage(data.message);
+            }
             break;
 
           case "READY":
-            if (loadingOverlay) {
-              loadingOverlay.style.opacity = "0";
-              setTimeout(() => { loadingOverlay.style.display = "none"; }, 300);
-            }
+            this.isWorkerReady = true;
             this.updateStatusMessage("Ready");
+            if (this.updateMemoryGauge) this.updateMemoryGauge();
             // Request Help catalog and set decimal separator
             this.worker.postMessage({ type: "GET_HELP_CATALOG" });
             this.worker.postMessage({ type: "SET_DECIMAL_SEPARATOR", sep: this.decimalSeparator });
@@ -96,23 +102,7 @@ class OpenMathApplication {
               this.dialogManager.showAlert(`Could not parse document: ${data.error}`, "Import Error");
               this.updateStatusMessage(`Import error: ${data.error}`);
             } else if (data.cells && data.cells.length > 0) {
-              const filename = data.filename || "Imported.mw";
-              const currentWs = this.getActiveWorksheet();
-              let targetWs;
-              if (currentWs && currentWs.cells.length === 1 && (!currentWs.cells[0].input || currentWs.cells[0].input.trim() === "") && !currentWs.cells[0].result && !currentWs.filePath) {
-                targetWs = currentWs;
-                targetWs.title = filename;
-                const doc = this.documents.find(d => d.id === targetWs.docId);
-                if (doc) doc.title = filename;
-                this.renderTabsToolbar();
-              } else {
-                targetWs = this.createNewWorksheet(filename);
-              }
-              targetWs.filePath = filename;
-              targetWs.loadImportedCells(data.cells);
-              this.setWindowTitle(filename);
-              this.updateStatusPath(filename);
-              this.updateStatusMessage(`Opened ${filename} (${data.cells.length} cells).`);
+              this.openDocumentWithCells(data.cells, data.filename || "Imported.mw");
             } else {
               this.dialogManager.showAlert("The imported document contains no cells.", "Empty Document");
               this.updateStatusMessage("Imported document contains no cells.");
@@ -129,6 +119,7 @@ class OpenMathApplication {
     } catch (err) {
       console.error("Worker error:", err);
       if (loadingStatus) loadingStatus.textContent = `Worker Init Error: ${err.message}`;
+      this.updateStatusMessage(`CAS Worker Init Error: ${err.message}`);
     }
   }
 
@@ -473,6 +464,9 @@ class OpenMathApplication {
       case "matrix_wizard":
         this.dialogManager.openDialog("dialog-matrix-wizard");
         break;
+      case "insert_image":
+        this.triggerImageInsertDialog();
+        break;
       case "insert_template":
         if (arg) this.insertTemplateIntoActiveCell(arg);
         break;
@@ -710,6 +704,24 @@ class OpenMathApplication {
         popup.classList.toggle("open");
       };
 
+      // Right-click resets color directly matching desktop OpenMath
+      btn.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isHighlight) {
+          document.execCommand("hiliteColor", false, "transparent");
+          const bar = document.querySelector(".highlight-swatch-bar");
+          if (bar) bar.style.backgroundColor = "transparent";
+          this.updateStatusMessage("Highlight color reset to transparent.");
+        } else {
+          document.execCommand("foreColor", false, "#000000");
+          const bar = document.querySelector(".swatch-color-bar");
+          if (bar) bar.style.backgroundColor = "#000000";
+          this.updateStatusMessage("Text color reset to black.");
+        }
+        popup.classList.remove("open");
+      };
+
       popup.querySelectorAll(".color-cell").forEach(cell => {
         cell.onclick = () => {
           const col = cell.dataset.color;
@@ -780,14 +792,24 @@ class OpenMathApplication {
       pathSeg.onclick = () => this.saveActiveDocument();
     }
 
-    // Simulate memory reporting
-    setInterval(() => {
+    // Memory reporting (actual heap if supported, else estimated baseline + dynamic allocations)
+    this.updateMemoryGauge = () => {
       const memEl = document.getElementById("status-memory-seg");
-      if (memEl) {
-        const mem = (120 + Math.random() * 5).toFixed(2);
-        memEl.textContent = `Memory: ${mem}M`;
+      if (!memEl) return;
+      if (window.performance && performance.memory && performance.memory.usedJSHeapSize) {
+        const mb = (performance.memory.usedJSHeapSize / (1024 * 1024)).toFixed(2);
+        memEl.textContent = `Memory: ${mb}M`;
+      } else {
+        let totalCells = 0;
+        for (const doc of this.documents) {
+          if (doc.instance && doc.instance.cells) totalCells += doc.instance.cells.length;
+        }
+        const estMb = (138.5 + totalCells * 0.45 + (this.isWorkerReady ? 14.2 : 0)).toFixed(2);
+        memEl.textContent = `Memory: ${estMb}M`;
       }
-    }, 4000);
+    };
+    this.updateMemoryGauge();
+    setInterval(() => this.updateMemoryGauge(), 3500);
   }
 
   // 7. Global Shortcuts
@@ -1017,42 +1039,428 @@ class OpenMathApplication {
     }
   }
 
-  // 9. File I/O
-  triggerFileOpenDialog() {
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = ".mw,.mv,.json,.txt,.zip";
-    fileInput.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        this.updateStatusMessage(`Loading ${file.name}...`);
-        const reader = new FileReader();
-        reader.onload = (re) => {
-          const buffer = re.target.result;
-          const uint8 = new Uint8Array(buffer);
-          let content;
-          // Check for zip magic header: PK\x03\x04 (0x50, 0x4B, 0x03, 0x04)
-          if (uint8.length >= 4 && uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04) {
-            let binary = "";
-            const chunkSize = 16384;
-            for (let i = 0; i < uint8.length; i += chunkSize) {
-              binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize));
-            }
-            content = "BASE64_ZIP:" + btoa(binary);
-          } else {
-            const decoder = new TextDecoder("utf-8");
-            content = decoder.decode(buffer);
-          }
-          this.worker.postMessage({
-            type: "PARSE_DOCUMENT",
-            filename: file.name,
-            content
+  // 9. File I/O & Document Import/Export
+  openDocumentWithCells(cells, filename = "Imported.mw") {
+    if (!cells || cells.length === 0) {
+      this.dialogManager.showAlert("The imported document contains no cells.", "Empty Document");
+      this.updateStatusMessage("Imported document contains no cells.");
+      return;
+    }
+
+    const currentWs = this.getActiveWorksheet();
+    let targetWs;
+    if (currentWs && currentWs.cells.length === 1 && (!currentWs.cells[0].input || currentWs.cells[0].input.trim() === "") && !currentWs.cells[0].result && !currentWs.filePath) {
+      targetWs = currentWs;
+      targetWs.title = filename;
+      const doc = this.documents.find(d => d.id === targetWs.docId);
+      if (doc) doc.title = filename;
+      this.renderTabsToolbar();
+    } else {
+      targetWs = this.createNewWorksheet(filename);
+    }
+    targetWs.filePath = filename;
+    targetWs.loadImportedCells(cells);
+    this.setWindowTitle(filename);
+    this.updateStatusPath(filename);
+    this.updateStatusMessage(`Opened ${filename} (${cells.length} cells).`);
+    if (this.updateMemoryGauge) this.updateMemoryGauge();
+  }
+
+  parseDocumentInJS(content, filename) {
+    if (!content || !content.trim()) return null;
+    const stripped = content.trim();
+
+    // 1. JSON worksheet format
+    if (stripped.startsWith("[") || stripped.startsWith("{")) {
+      try {
+        const data = JSON.parse(stripped);
+        const cellList = Array.isArray(data) ? data : (data.cells || []);
+        if (cellList && cellList.length > 0) {
+          return cellList.map((c, idx) => {
+            const isSec = !!c.is_section_header;
+            const modeVal = c.input_mode !== undefined ? c.input_mode : (c.mode === "text" ? 2 : (c.mode === "1d_math" ? 1 : 0));
+            return {
+              cell_id: c.cell_id || `cell_${idx + 1}`,
+              execution_idx: c.execution_idx || idx + 1,
+              input: c.input || "",
+              input_mode: modeVal,
+              mode: isSec ? "section" : (modeVal === 2 ? "text" : (modeVal === 1 ? "1d_math" : "2d_math")),
+              is_section_header: isSec,
+              section_title: c.section_title || (isSec ? c.input : ""),
+              section_level: c.section_level || 0,
+              is_collapsed: !!c.is_collapsed,
+              result: c.result || null,
+              embedded_images: c.embedded_images || null
+            };
           });
-        };
-        reader.readAsArrayBuffer(file);
+        }
+      } catch (e) {
+        // Fall through
+      }
+    }
+
+    // 2. XML worksheet format (.mw / .mv)
+    if (stripped.startsWith("<")) {
+      try {
+        const parser = new DOMParser();
+        let xmlDoc = parser.parseFromString(stripped, "text/xml");
+        if (xmlDoc.querySelector("parsererror")) {
+          // If XML entity errors occurred, sanitize and re-parse
+          const sanitized = stripped.replace(/&(?!amp;|lt;|gt;|apos;|quot;)/g, "&amp;");
+          xmlDoc = parser.parseFromString(sanitized, "text/xml");
+        }
+        if (!xmlDoc.querySelector("parsererror")) {
+          const cells = this.extractCellsFromXmlDoc(xmlDoc);
+          if (cells && cells.length > 0) return cells;
+        }
+      } catch (e) {
+        console.warn("JS XML parse error, deferring to CAS engine:", e);
+      }
+      return null;
+    }
+
+    // 3. Plain text format (.txt, .md)
+    const lines = stripped.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const cells = [];
+    for (const line of lines) {
+      if (line.startsWith("#")) {
+        const isSec = line.startsWith("# ") || line.startsWith("## ");
+        const secTitle = line.replace(/^#+\s*/, "");
+        cells.push({
+          cell_id: `c_${cells.length + 1}`,
+          execution_idx: cells.length + 1,
+          input: line,
+          input_mode: 2,
+          mode: isSec ? "section" : "text",
+          is_section_header: isSec,
+          section_title: secTitle,
+          section_level: line.startsWith("# ") ? 0 : 1,
+          result: null
+        });
+      } else if (!line.startsWith("//")) {
+        cells.push({
+          cell_id: `c_${cells.length + 1}`,
+          execution_idx: cells.length + 1,
+          input: line,
+          input_mode: 0,
+          mode: "2d_math",
+          is_section_header: false,
+          result: null
+        });
+      }
+    }
+    return cells.length > 0 ? cells : null;
+  }
+
+  extractCellsFromXmlDoc(xmlDoc) {
+    const cells = [];
+    let execIdx = 1;
+
+    const cleanText = (t) => {
+      if (!t) return "";
+      return t.replace(/\u00a0/g, " ").replace(/\bJSFH\b/g, "").trim();
+    };
+
+    const getEqMath = (eqElem) => {
+      const inpEq = (eqElem.getAttribute("input-equation") || "").trim();
+      if (inpEq && !inpEq.startsWith("JSFH") && !inpEq.startsWith("LUkl") && !inpEq.startsWith("eN")) return inpEq;
+      const disp = (eqElem.getAttribute("display") || "").trim();
+      if (disp && !disp.startsWith("JSFH") && !disp.startsWith("LUkl") && !disp.startsWith("eN")) return disp;
+      const txt = cleanText(eqElem.textContent);
+      if (txt && !txt.startsWith("JSFH") && !txt.startsWith("LUkl") && !txt.startsWith("eN")) return txt;
+      return "";
+    };
+
+    const processNode = (node, depth = 0) => {
+      const tag = node.tagName;
+
+      if (tag === "Section") {
+        const titleElem = node.querySelector(":scope > Title");
+        const secTitle = cleanText(titleElem ? titleElem.textContent : "");
+        const isCol = (node.getAttribute("collapsed") || "false").toLowerCase() === "true";
+        cells.push({
+          cell_id: `c_${execIdx}`,
+          execution_idx: execIdx++,
+          input: secTitle,
+          input_mode: 2,
+          mode: "section",
+          is_section_header: true,
+          section_title: secTitle,
+          section_level: depth,
+          is_collapsed: isCol,
+          result: null
+        });
+        for (const child of node.children) {
+          if (child.tagName !== "Title") processNode(child, depth + 1);
+        }
+        return;
+      }
+
+      if (tag === "Group" || tag === "Presentation-Block") {
+        const inp = node.querySelector(":scope > Input") || node;
+        const out = node.querySelector(":scope > Output");
+
+        // Embedded images
+        const imgs = inp.querySelectorAll("Image");
+        for (const img of imgs) {
+          const raw = cleanText(img.textContent);
+          if (raw) {
+            cells.push({
+              cell_id: `c_${execIdx}`,
+              execution_idx: execIdx++,
+              input: `<img src="data:image/png;base64,${raw}" style="max-width:100%;" />`,
+              input_mode: 2,
+              mode: "text",
+              is_section_header: false,
+              section_level: depth,
+              result: null
+            });
+          }
+        }
+
+        // Output Result if present
+        let outRes = null;
+        if (out) {
+          const outEqs = out.querySelectorAll("Equation, Math");
+          for (const oeq of outEqs) {
+            const om = getEqMath(oeq);
+            if (om) {
+              outRes = { exact_text: om, exact_latex: om, numeric_text: om, numeric_latex: om, result_type: "Symbolic", is_plot: false };
+              break;
+            }
+          }
+          if (!outRes) {
+            const outTfs = out.querySelectorAll("Text-field");
+            for (const otf of outTfs) {
+              const otxt = cleanText(otf.textContent);
+              if (otxt && !otxt.startsWith("LUkl") && !otxt.startsWith("eN")) {
+                outRes = { exact_text: otxt, exact_latex: otxt, numeric_text: otxt, numeric_latex: otxt, result_type: "Symbolic", is_plot: false };
+                break;
+              }
+            }
+          }
+        }
+
+        // Input Equations
+        const eqs = Array.from(inp.querySelectorAll("Equation, Math")).filter(eq => !out || !out.contains(eq));
+        if (eqs.length > 0) {
+          for (const eq of eqs) {
+            const mVal = getEqMath(eq);
+            if (mVal) {
+              const isExec = (eq.getAttribute("executable") || "true").toLowerCase() !== "false";
+              cells.push({
+                cell_id: `c_${execIdx}`,
+                execution_idx: execIdx++,
+                input: mVal,
+                input_mode: isExec ? 0 : 3,
+                mode: "2d_math",
+                is_section_header: false,
+                section_level: depth,
+                result: outRes
+              });
+              outRes = null;
+            }
+          }
+          return;
+        }
+
+        // Input Text Fields
+        const tfs = inp.querySelectorAll("Text-field");
+        for (const tf of tfs) {
+          const prompt = tf.getAttribute("prompt") || "";
+          const style = tf.getAttribute("style") || "";
+          const tfText = cleanText(tf.textContent);
+          if (tfText && !tfText.startsWith("LUkl") && !tfText.startsWith("eN")) {
+            const is1d = style.includes("Input") || prompt.trim() === ">";
+            cells.push({
+              cell_id: `c_${execIdx}`,
+              execution_idx: execIdx++,
+              input: tfText,
+              input_mode: is1d ? 1 : 2,
+              mode: is1d ? "1d_math" : "text",
+              is_section_header: false,
+              section_level: depth,
+              result: is1d ? outRes : null
+            });
+          }
+        }
+        return;
+      }
+
+      if (tag === "Table" || tag === "table") {
+        const rows = node.querySelectorAll("Table-Row");
+        if (rows.length > 0) {
+          let tableHtml = '<table style="border-collapse: collapse; width: 100%; border: 1px solid #b0b8c0;"><tbody>';
+          for (const row of rows) {
+            tableHtml += '<tr>';
+            for (const cell of row.querySelectorAll("Table-Cell")) {
+              tableHtml += `<td style="border: 1px solid #d0d8e0; padding: 4px 8px;">${cleanText(cell.textContent) || "&nbsp;"}</td>`;
+            }
+            tableHtml += '</tr>';
+          }
+          tableHtml += '</tbody></table>';
+          cells.push({
+            cell_id: `c_${execIdx}`,
+            execution_idx: execIdx++,
+            input: tableHtml,
+            input_mode: 2,
+            mode: "text",
+            is_section_header: false,
+            section_level: depth,
+            result: null
+          });
+        }
+        return;
+      }
+
+      for (const child of node.children) {
+        processNode(child, depth);
+      }
+    };
+
+    const root = xmlDoc.documentElement;
+    if (root) {
+      for (const child of root.children) {
+        processNode(child, 0);
+      }
+    }
+
+    if (cells.length === 0) {
+      const allEqs = xmlDoc.querySelectorAll("Equation, Math");
+      for (const eq of allEqs) {
+        const mVal = getEqMath(eq);
+        if (mVal) {
+          cells.push({
+            cell_id: `c_${execIdx}`,
+            execution_idx: execIdx++,
+            input: mVal,
+            input_mode: 0,
+            mode: "2d_math",
+            is_section_header: false,
+            section_level: 0,
+            result: null
+          });
+        }
+      }
+    }
+
+    return cells.length > 0 ? cells : null;
+  }
+
+  loadFile(file) {
+    if (!file) return;
+    this.updateStatusMessage(`Loading ${file.name}...`);
+
+    const reader = new FileReader();
+    reader.onload = (re) => {
+      const buffer = re.target.result;
+      const uint8 = new Uint8Array(buffer);
+      // Check for zip magic header: PK\x03\x04
+      if (uint8.length >= 4 && uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04) {
+        let binary = "";
+        const chunkSize = 16384;
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize));
+        }
+        const content = "BASE64_ZIP:" + btoa(binary);
+        this.worker.postMessage({ type: "PARSE_DOCUMENT", filename: file.name, content });
+        return;
+      }
+
+      const decoder = new TextDecoder("utf-8");
+      const textContent = decoder.decode(buffer);
+
+      // Fast JS-side parsing attempt for instant loading (<2ms)
+      const jsParsed = this.parseDocumentInJS(textContent, file.name);
+      if (jsParsed && jsParsed.length > 0) {
+        this.openDocumentWithCells(jsParsed, file.name);
+        return;
+      }
+
+      // If JS-side parsing needed Python CAS engine features, delegate to worker
+      this.worker.postMessage({
+        type: "PARSE_DOCUMENT",
+        filename: file.name,
+        content: textContent
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  triggerFileOpenDialog() {
+    const fileInput = document.getElementById("app-file-input");
+    if (!fileInput) return;
+    fileInput.value = "";
+    fileInput.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        this.loadFile(file);
       }
     };
     fileInput.click();
+  }
+
+  triggerImageInsertDialog() {
+    const imgInput = document.getElementById("app-image-input");
+    if (!imgInput) return;
+    imgInput.value = "";
+    imgInput.onchange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          const dataUrl = re.target.result;
+          const ws = this.getActiveWorksheet();
+          if (ws) {
+            const activeCell = ws.cells.find(c => c.id === ws.activeCellId);
+            if (activeCell && activeCell.mode === "text") {
+              const editEl = activeCell.domElement.querySelector(".cell-input-edit");
+              if (editEl) {
+                editEl.focus();
+                document.execCommand("insertHTML", false, `<img src="${dataUrl}" style="max-width:100%; height:auto; margin:4px 0; border-radius:3px;" />`);
+                activeCell.input = editEl.innerHTML;
+              }
+            } else {
+              ws.addCell({
+                mode: "text",
+                input: `<img src="${dataUrl}" style="max-width:100%; height:auto; margin:4px 0; border-radius:3px;" />`
+              });
+            }
+            this.updateStatusMessage(`Inserted image ${file.name}.`);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    imgInput.click();
+  }
+
+  initDragAndDrop() {
+    const dropZone = document.getElementById("document-stack") || document.body;
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      dropZone.classList.add("drop-target-active");
+    });
+
+    window.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        dropZone.classList.remove("drop-target-active");
+      }
+    });
+
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove("drop-target-active");
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length > 0) {
+        this.loadFile(files[0]);
+      }
+    });
   }
 
   saveActiveDocument() {

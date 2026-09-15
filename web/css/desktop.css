@@ -1104,3 +1104,23 @@ body.theme-dark .status-segment.mode-badge {
   }
 }
 
+/* Background CAS Init Spinner in Status Bar */
+.cas-init-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.8px solid #94a3b8;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+/* Drag-and-Drop Active Overlay */
+.drop-target-active {
+  outline: 2px dashed #2563eb !important;
+  outline-offset: -2px;
+  background-color: rgba(37, 99, 235, 0.04) !important;
+}
+
