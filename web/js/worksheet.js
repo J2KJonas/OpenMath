@@ -101,7 +101,7 @@ export class WorksheetView {
     window.addEventListener("resize", () => this.drawScopeOverlay());
   }
 
-  addCell(options = {}) {
+  addCell(options = {}, insertIntoDom = true) {
     const id = "cell_" + Math.random().toString(36).substring(2, 9);
     const mode = options.mode || "2d_math"; // "2d_math", "1d_math", "text", "section"
     const isSection = options.isSectionHeader || mode === "section";
@@ -137,9 +137,11 @@ export class WorksheetView {
       this.cells.push(cellObj);
     }
 
-    this.renderCellDom(cellObj);
-    this.focusCell(id);
-    this.drawScopeOverlay();
+    this.renderCellDom(cellObj, insertIntoDom);
+    if (insertIntoDom) {
+      this.focusCell(id);
+      this.drawScopeOverlay();
+    }
     return cellObj;
   }
 
@@ -150,7 +152,7 @@ export class WorksheetView {
     }
   }
 
-  renderCellDom(cell) {
+  renderCellDom(cell, insertIntoDom = true) {
     const cellDiv = document.createElement("div");
     cellDiv.className = `worksheet-cell ${cell.isSectionHeader ? 'section-header-cell level-' + cell.sectionLevel : ''}`;
     cellDiv.id = cell.id;
@@ -265,16 +267,18 @@ export class WorksheetView {
 
     cell.domElement = cellDiv;
 
-    // Insert into DOM in order
-    const idx = this.cells.findIndex(c => c.id === cell.id);
-    if (idx === 0) {
-      this.cellsContainer.prepend(cellDiv);
-    } else {
-      const prevDom = this.cells[idx - 1]?.domElement;
-      if (prevDom && prevDom.parentNode) {
-        prevDom.after(cellDiv);
+    // Insert into DOM in order if requested
+    if (insertIntoDom && this.cellsContainer) {
+      const idx = this.cells.findIndex(c => c.id === cell.id);
+      if (idx === 0) {
+        this.cellsContainer.prepend(cellDiv);
       } else {
-        this.cellsContainer.appendChild(cellDiv);
+        const prevDom = this.cells[idx - 1]?.domElement;
+        if (prevDom && prevDom.parentNode) {
+          prevDom.after(cellDiv);
+        } else {
+          this.cellsContainer.appendChild(cellDiv);
+        }
       }
     }
 
@@ -586,13 +590,19 @@ export class WorksheetView {
   }
 
   drawScopeOverlay() {
-    if (!this.scopeCanvas) return;
+    if (!this.scopeCanvas || !this.cellsContainer) return;
     const ctx = this.scopeCanvas.getContext("2d");
     const rect = this.cellsContainer.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    if (rect.width === 0 || rect.height === 0) return;
 
-    this.scopeCanvas.width = rect.width * dpr;
-    this.scopeCanvas.height = rect.height * dpr;
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.round(rect.width * dpr);
+    const targetH = Math.round(rect.height * dpr);
+
+    if (this.scopeCanvas.width !== targetW || this.scopeCanvas.height !== targetH) {
+      this.scopeCanvas.width = targetW;
+      this.scopeCanvas.height = targetH;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, rect.width, rect.height);
 
@@ -675,6 +685,8 @@ export class WorksheetView {
     this.executionCounter = 0;
     this.plotInstances.clear();
 
+    const fragment = document.createDocumentFragment();
+
     for (const c of cellList) {
       const isSec = bool(c.is_section_header);
       const mode = isSec ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : (c.input_mode === 3 ? "nonexec_math" : "2d_math")));
@@ -692,15 +704,21 @@ export class WorksheetView {
         result: c.result || null,
         error: c.result?.error || null,
         equationIndex: eqIdx,
-        embeddedImages: c.embedded_images || null
-      });
+        embeddedImages: c.embedded_images || c.embeddedImages || null
+      }, false);
 
       if (eqIdx && cellObj && cellObj.domElement) {
         cellObj.equationIndex = eqIdx;
         const eqLabel = cellObj.domElement.querySelector(".cell-equation-label");
         if (eqLabel) eqLabel.textContent = `(${eqIdx})`;
       }
+
+      if (cellObj && cellObj.domElement) {
+        fragment.appendChild(cellObj.domElement);
+      }
     }
+
+    this.cellsContainer.appendChild(fragment);
 
     if (this.cells.length === 0) {
       this.addCell();
@@ -709,7 +727,7 @@ export class WorksheetView {
     }
 
     this.updateSectionFolding();
-    this.drawScopeOverlay();
+    requestAnimationFrame(() => this.drawScopeOverlay());
   }
 
   getSerializableCells() {

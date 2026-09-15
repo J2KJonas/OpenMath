@@ -198,6 +198,8 @@ def _parse_xml_worksheet_fallback(content: str) -> list:
             return inp_eq
         disp = eq_elem.attrib.get('display', '').strip()
         if disp and not disp.startswith('JSFH'):
+            if not (disp.startswith('LUkl') or disp.startswith('eN')):
+                return disp
             try:
                 from cas_engine.typesetting_parser import batch_decode_displays
                 m_str, l_str = batch_decode_displays([disp])[0]
@@ -205,8 +207,6 @@ def _parse_xml_worksheet_fallback(content: str) -> list:
                     return m_str
             except Exception:
                 pass
-            if not (disp.startswith('LUkl') or disp.startswith('eN')):
-                return disp
         t = ''.join(eq_elem.itertext()).strip()
         if t and t != 'JSFH' and not (t.startswith('LUkl') or t.startswith('eN')):
             return t
@@ -470,56 +470,57 @@ def parse_worksheet_document(content: str, filename: str = None) -> dict:
     if stripped.startswith('<'):
         parsed = []
         try:
-            from cas_engine.mw_importer import WorksheetIO
-            raw_cells = WorksheetIO.load_mw_string(content)
-            for c in raw_cells:
-                inp = (c.get('input', '') or '').strip()
-                is_sec = bool(c.get('is_section_header', False))
-                title = (c.get('section_title', '') or '').strip()
-                mode_val = c.get('input_mode', 0)
-                mode_str = "section" if is_sec else ("text" if mode_val == 2 else "math")
-
-                res_dict = c.get('result')
-                clean_res = None
-                if res_dict:
-                    exact_latex = res_dict.get('exact_latex') or ''
-                    exact_text = res_dict.get('exact_text') or ''
-                    if not exact_latex and exact_text:
-                        exact_latex = exact_text
-                    numeric_latex = res_dict.get('numeric_latex') or exact_latex
-                    numeric_text = res_dict.get('numeric_text') or exact_text
-                    clean_res = {
-                        'exact_latex': exact_latex,
-                        'exact_text': exact_text,
-                        'numeric_latex': numeric_latex,
-                        'numeric_text': numeric_text,
-                        'is_plot': bool(res_dict.get('is_plot', False)),
-                        'result_type': res_dict.get('result_type', 'Symbolic')
-                    }
-
-                parsed.append({
-                    'cell_id': c.get('cell_id') or str(uuid.uuid4())[:8],
-                    'execution_idx': c.get('execution_idx', len(parsed) + 1),
-                    'input': inp,
-                    'input_mode': mode_val,
-                    'mode': mode_str,
-                    'is_section_header': is_sec,
-                    'section_title': title or inp,
-                    'section_level': c.get('section_level', 0),
-                    'is_collapsed': bool(c.get('is_collapsed', False)),
-                    'section_bg_colors': c.get('section_bg_colors', []),
-                    'section_html': c.get('section_html', ''),
-                    'embedded_images': c.get('embedded_images', {}),
-                    'result': clean_res,
-                    'error': c.get('error')
-                })
+            parsed = _parse_xml_worksheet_fallback(content)
         except Exception:
             parsed = []
 
-        # If WorksheetIO returned no cells, or fallback finds more complete cell structure (e.g. bare equations), use fallback
-        fb = _parse_xml_worksheet_fallback(content)
-        if not parsed or len(fb) > len(parsed):
-            parsed = fb
+        if not parsed:
+            try:
+                from cas_engine.mw_importer import WorksheetIO
+                raw_cells = WorksheetIO.load_mw_string(content)
+                for c in raw_cells:
+                    inp = (c.get('input', '') or '').strip()
+                    is_sec = bool(c.get('is_section_header', False))
+                    title = (c.get('section_title', '') or '').strip()
+                    mode_val = c.get('input_mode', 0)
+                    mode_str = "section" if is_sec else ("text" if mode_val == 2 else "math")
+
+                    res_dict = c.get('result')
+                    clean_res = None
+                    if res_dict:
+                        exact_latex = res_dict.get('exact_latex') or ''
+                        exact_text = res_dict.get('exact_text') or ''
+                        if not exact_latex and exact_text:
+                            exact_latex = exact_text
+                        numeric_latex = res_dict.get('numeric_latex') or exact_latex
+                        numeric_text = res_dict.get('numeric_text') or exact_text
+                        clean_res = {
+                            'exact_latex': exact_latex,
+                            'exact_text': exact_text,
+                            'numeric_latex': numeric_latex,
+                            'numeric_text': numeric_text,
+                            'is_plot': bool(res_dict.get('is_plot', False)),
+                            'result_type': res_dict.get('result_type', 'Symbolic')
+                        }
+
+                    parsed.append({
+                        'cell_id': c.get('cell_id') or str(uuid.uuid4())[:8],
+                        'execution_idx': c.get('execution_idx', len(parsed) + 1),
+                        'input': inp,
+                        'input_mode': mode_val,
+                        'mode': mode_str,
+                        'is_section_header': is_sec,
+                        'section_title': title or inp,
+                        'section_level': c.get('section_level', 0),
+                        'is_collapsed': bool(c.get('is_collapsed', False)),
+                        'section_bg_colors': c.get('section_bg_colors', []),
+                        'section_html': c.get('section_html', ''),
+                        'embedded_images': c.get('embedded_images', {}),
+                        'result': clean_res,
+                        'error': c.get('error')
+                    })
+            except Exception:
+                parsed = []
 
         if parsed:
             return {"cells": parsed, "error": None}

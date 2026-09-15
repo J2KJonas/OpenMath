@@ -1172,10 +1172,17 @@ class OpenMathApplication {
     };
 
     const processNode = (node, depth = 0) => {
+      if (!node || depth > 40 || cells.length >= 2000) return;
       const tag = node.tagName;
 
       if (tag === "Section") {
-        const titleElem = node.querySelector(":scope > Title");
+        let titleElem = null;
+        for (let i = 0; i < node.children.length; i++) {
+          if (node.children[i].tagName === "Title") {
+            titleElem = node.children[i];
+            break;
+          }
+        }
         const secTitle = cleanText(titleElem ? titleElem.textContent : "");
         const isCol = (node.getAttribute("collapsed") || "false").toLowerCase() === "true";
         cells.push({
@@ -1197,8 +1204,14 @@ class OpenMathApplication {
       }
 
       if (tag === "Group" || tag === "Presentation-Block") {
-        const inp = node.querySelector(":scope > Input") || node;
-        const out = node.querySelector(":scope > Output");
+        let inp = null;
+        let out = null;
+        for (let i = 0; i < node.children.length; i++) {
+          const cTag = node.children[i].tagName;
+          if (cTag === "Input") inp = node.children[i];
+          else if (cTag === "Output") out = node.children[i];
+        }
+        if (!inp) inp = node;
 
         // Embedded images
         const imgs = inp.querySelectorAll("Image");
@@ -1357,13 +1370,15 @@ class OpenMathApplication {
       const uint8 = new Uint8Array(buffer);
       // Check for zip magic header: PK\x03\x04
       if (uint8.length >= 4 && uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04) {
-        let binary = "";
-        const chunkSize = 16384;
-        for (let i = 0; i < uint8.length; i += chunkSize) {
-          binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize));
-        }
-        const content = "BASE64_ZIP:" + btoa(binary);
-        this.worker.postMessage({ type: "PARSE_DOCUMENT", filename: file.name, content });
+        // Use native FileReader readAsDataURL for instant zero-copy base64
+        const dataUrlReader = new FileReader();
+        dataUrlReader.onload = (dr) => {
+          const res = dr.target.result || "";
+          const b64 = res.includes(",") ? res.split(",")[1] : res;
+          const content = "BASE64_ZIP:" + b64;
+          this.worker.postMessage({ type: "PARSE_DOCUMENT", filename: file.name, content });
+        };
+        dataUrlReader.readAsDataURL(file);
         return;
       }
 
@@ -1371,10 +1386,14 @@ class OpenMathApplication {
       const textContent = decoder.decode(buffer);
 
       // Fast JS-side parsing attempt for instant loading (<2ms)
-      const jsParsed = this.parseDocumentInJS(textContent, file.name);
-      if (jsParsed && jsParsed.length > 0) {
-        this.openDocumentWithCells(jsParsed, file.name);
-        return;
+      try {
+        const jsParsed = this.parseDocumentInJS(textContent, file.name);
+        if (jsParsed && jsParsed.length > 0) {
+          this.openDocumentWithCells(jsParsed, file.name);
+          return;
+        }
+      } catch (err) {
+        console.warn("Fast JS parse error:", err);
       }
 
       // If JS-side parsing needed Python CAS engine features, delegate to worker
