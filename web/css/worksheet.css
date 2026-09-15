@@ -183,6 +183,8 @@ body.theme-dark .start-dev-btn:hover {
   position: absolute;
   top: 0;
   left: 0;
+  right: 0;
+  bottom: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -211,18 +213,26 @@ body.theme-dark .start-dev-btn:hover {
 /* Left Group Bracket Indicator `[` */
 .cell-bracket-bar {
   position: absolute;
-  left: 3px;
-  top: 2px;
-  bottom: 2px;
-  width: 7px;
-  border-left: 2px solid var(--border);
-  border-top: 2px solid var(--border);
-  border-bottom: 2px solid var(--border);
+  left: 2px;
+  top: 1px;
+  bottom: 1px;
+  width: 6px;
+  border-left: 1.5px solid #8e9aaf;
+  border-top: 1.5px solid #8e9aaf;
+  border-bottom: 1.5px solid #8e9aaf;
   pointer-events: none;
 }
 
 .worksheet-cell.active > .cell-bracket-bar {
-  border-color: var(--border-focus);
+  border-color: #2563eb;
+}
+
+body.theme-dark .cell-bracket-bar {
+  border-color: #64748b;
+}
+
+body.theme-dark .worksheet-cell.active > .cell-bracket-bar {
+  border-color: #60a5fa;
 }
 
 /* Input Row */
@@ -235,11 +245,17 @@ body.theme-dark .start-dev-btn:hover {
 
 .cell-prompt {
   font-family: "Times New Roman", Times, serif;
-  font-size: 13px;
+  font-size: 14px;
+  font-style: italic;
   font-weight: bold;
-  color: var(--prompt-color);
+  color: #cc0000;
   user-select: none;
   flex-shrink: 0;
+  line-height: 1.2;
+}
+
+body.theme-dark .cell-prompt {
+  color: #ef4444;
 }
 
 .cell-input-edit {
@@ -327,12 +343,27 @@ body.theme-dark .start-dev-btn:hover {
 }
 
 .section-toggle-btn {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
-  color: var(--text-primary);
-  font-size: 11px;
+  color: #1e293b;
+  font-size: 9px;
+  line-height: 1;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 0;
+  margin: 0;
+  user-select: none;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+body.theme-dark .section-toggle-btn {
+  color: #f1f5f9;
 }
 
 .section-title-edit {
@@ -343,6 +374,14 @@ body.theme-dark .start-dev-btn:hover {
   border: none;
   background: transparent;
   flex: 1;
+  line-height: 1.35;
+}
+
+.section-title-edit span[style*="background-color"] {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1.2;
+  margin-right: 5px;
 }
 
 .section-header-cell.level-0 .section-title-edit {
@@ -373,6 +412,43 @@ body.theme-dark .start-dev-btn:hover {
 
 .worksheet-cell table {
   max-width: 100%;
+  border-collapse: collapse;
+  background-color: var(--bg-cell);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.worksheet-cell table td,
+.worksheet-cell table th {
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+/* Instant dark mode table styling with zero lag */
+body.theme-dark .worksheet-cell table {
+  background-color: var(--bg-cell) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+body.theme-dark .worksheet-cell table td,
+body.theme-dark .worksheet-cell table th {
+  background-color: var(--bg-cell) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+body.theme-dark .worksheet-cell table td *,
+body.theme-dark .worksheet-cell table th * {
+  color: inherit;
+}
+
+body.theme-dark .worksheet-cell table td [style*="color: #000088"],
+body.theme-dark .worksheet-cell table td [style*="color:#000088"],
+body.theme-dark .worksheet-cell table td [style*="color: #0000bb"],
+body.theme-dark .worksheet-cell table td [style*="color:#0000bb"],
+body.theme-dark .worksheet-cell table td [style*="color: blue"] {
+  color: #93c5fd !important;
 }
 
 /* Plot Container inside Cell */
@@ -529,3 +605,187 @@ body.theme-dark .error-suggestion-btn {
   }
 }
 
+/* Desktop-Fidelity Loading Overlay Dark Mode */
+body.theme-dark #loading-overlay {
+  background-color: rgba(15, 23, 42, 0.85);
+}
+body.theme-dark #loadingCard {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4) !important;
+}
+body.theme-dark #loading-title {
+  color: #f1f5f9 !important;
+}
+body.theme-dark #loading-filename {
+  color: #60a5fa !important;
+}
+body.theme-dark #loading-status {
+  color: #94a3b8 !important;
+}
+body.theme-dark #loadingCard div[style*="background-color: #e2e8f0"] {
+  background-color: #334155 !important;
+}
+
+/* ==========================================================================
+   Interactive Table & Image Resizing / Dragging Overlays
+   (Matches ui/worksheet_cell.py lines 9742-10350)
+   ========================================================================== */
+
+.table-interactive-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 6px 0;
+  vertical-align: top;
+}
+
+.table-move-handle {
+  position: absolute;
+  top: -16px;
+  left: 0;
+  width: 28px;
+  height: 15px;
+  background: #eff6ff;
+  border: 1px solid #2563eb;
+  border-radius: 3px 3px 0 0;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+  user-select: none;
+}
+
+body.theme-dark .table-move-handle {
+  background: #1e293b;
+  border-color: #60a5fa;
+}
+
+.table-move-handle:active {
+  cursor: grabbing;
+}
+
+.table-move-handle .grip-dot {
+  width: 3px;
+  height: 3px;
+  background-color: #2563eb;
+  border-radius: 50%;
+}
+
+body.theme-dark .table-move-handle .grip-dot {
+  background-color: #60a5fa;
+}
+
+.table-interactive-wrapper:hover .table-move-handle,
+.table-interactive-wrapper.table-active .table-move-handle {
+  opacity: 1;
+}
+
+.table-interactive-wrapper table {
+  border-collapse: collapse;
+  position: relative;
+}
+
+.table-corner-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 9px;
+  height: 9px;
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 15;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+body.theme-dark .table-corner-handle {
+  background: #1e293b;
+  border-color: #60a5fa;
+}
+
+.table-interactive-wrapper:hover .table-corner-handle,
+.table-interactive-wrapper.table-active .table-corner-handle {
+  opacity: 1;
+}
+
+/* Table column resize guide line */
+.col-resize-guideline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: #2563eb;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Image Resizing Wrappers & Corner Handles */
+.image-resize-wrapper {
+  position: relative;
+  display: inline-block;
+  margin: 4px;
+  line-height: 0;
+  user-select: none;
+}
+
+.image-resize-wrapper.image-selected {
+  outline: 1.5px solid #2563eb;
+  outline-offset: 1px;
+}
+
+body.theme-dark .image-resize-wrapper.image-selected {
+  outline-color: #60a5fa;
+}
+
+.image-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background-color: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  display: none;
+  z-index: 25;
+}
+
+body.theme-dark .image-resize-handle {
+  background-color: #1e293b;
+  border-color: #60a5fa;
+}
+
+.image-resize-wrapper.image-selected .image-resize-handle {
+  display: block;
+}
+
+.image-resize-handle.handle-tl {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+
+.image-resize-handle.handle-tr {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+
+.image-resize-handle.handle-bl {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.image-resize-handle.handle-br {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}

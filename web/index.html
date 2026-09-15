@@ -24,16 +24,22 @@
   <input type="file" id="app-file-input" style="display: none;" accept=".mw,.mv,.json,.txt,.zip" />
   <input type="file" id="app-image-input" style="display: none;" accept="image/*" />
 
-  <!-- Loading Splash Overlay (Hidden by default for instant UI display) -->
-  <div id="loading-overlay" class="modal-backdrop" style="display: none; background-color: rgba(236, 236, 236, 0.96); z-index: 9999;">
-    <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.15); padding: 32px 40px; text-align: center; max-width: 440px; width: 90%;">
-      <img src="./favicon.png" alt="OpenMath" width="56" height="56" style="margin-bottom: 12px;" />
-      <h2 style="font-size: 20px; font-weight: bold; color: #1e3a8a; margin-bottom: 4px;">OpenMath</h2>
-      <p style="font-size: 11px; color: #64748b; margin-bottom: 18px;">Desktop Symbolic & Numerical Computer Algebra System</p>
-      <div style="width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; margin: 0 auto 16px auto; animation: spin 0.8s linear infinite;"></div>
-      <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
-      <div id="loading-status" style="font-size: 11.5px; font-weight: 500; color: #334155;">Initializing Python WebAssembly runtime...</div>
-      <p style="font-size: 10px; color: #94a3b8; margin-top: 8px;">Running SymPy, NumPy, and OpenMath cas_engine locally in browser.</p>
+  <!-- Desktop-Fidelity Loading Overlay (Matches ui/loading_overlay.py) -->
+  <div id="loading-overlay" class="modal-backdrop" style="display: none; background-color: rgba(248, 250, 252, 0.85); backdrop-filter: blur(4px); z-index: 9999;">
+    <div id="loadingCard" style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18); padding: 22px 26px; max-width: 420px; width: 90%;">
+      <!-- Header with Icon and Title -->
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+        <span style="font-size: 18px; line-height: 1;">📂</span>
+        <span id="loading-title" style="font-size: 14px; font-weight: 700; color: #0f172a;">Opening Project...</span>
+      </div>
+      <!-- Document Name -->
+      <div id="loading-filename" style="font-size: 12px; font-weight: 600; color: #2563eb; word-break: break-all; margin-bottom: 12px; min-height: 16px;"></div>
+      <!-- Progress Bar (height 8px, rounded 4px) -->
+      <div style="width: 100%; height: 8px; background-color: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 10px; position: relative;">
+        <div id="loading-progress-bar" style="height: 100%; width: 0%; background-color: #2563eb; border-radius: 4px; transition: width 0.15s ease;"></div>
+      </div>
+      <!-- Status Text -->
+      <div id="loading-status" style="font-size: 12px; color: #64748b; word-break: break-word;">Reading worksheet archive...</div>
     </div>
   </div>
 
@@ -120,6 +126,7 @@
           <button class="menu-action" data-action="toggle_mode_f5"><span>Toggle 1-D / 2-D Math</span><span class="shortcut">F5</span></button>
           <div class="menu-sep"></div>
           <button class="menu-action" data-action="matrix_wizard"><span>Matrix Wizard...</span><span class="shortcut">Ctrl+M</span></button>
+          <button class="menu-action" data-action="insert_table"><span>Table...</span></button>
           <button class="menu-action" data-action="insert_image"><span>Image...</span></button>
           <div class="menu-sep"></div>
           <button class="menu-action" data-action="insert_template" data-arg="polygonOmråde(Uligheder, x = 0 .. 10, y = 0 .. 10)"><span>polygonOmråde Linear Inequality Region</span></button>

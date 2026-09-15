@@ -9,6 +9,8 @@ import { WorksheetView } from "./worksheet.js";
 import { PaletteManager } from "./palette.js";
 import { ContextPanelManager } from "./context-panel.js";
 import { DialogManager } from "./dialogs.js";
+import { fastCAS } from "./fast-cas.js";
+import { parseMwDocument } from "./mw-importer.js";
 
 class OpenMathApplication {
   constructor() {
@@ -27,7 +29,10 @@ class OpenMathApplication {
     this.contextPanel = null;
     this.dialogManager = null;
     this.helpCatalog = [];
-    this.isWorkerReady = false;
+    this.fastCAS = fastCAS;
+    this.fastCAS.setDecimalSeparator(this.decimalSeparator);
+    this.isWorkerReady = true; // Immediately ready via client-side FastCAS!
+    this.isPyodideReady = false;
   }
 
   init() {
@@ -44,14 +49,21 @@ class OpenMathApplication {
     // Start with Start.mw (default start page matching ui/main_window.py)
     this.createStartPageDocument();
 
-    // Start CAS worker in background without blocking UI
-    this.initWorker();
+    // App is immediately functional and ready!
+    this.updateStatusMessage("Ready");
+
+    // Start CAS worker in background when idle without blocking UI
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(() => this.initWorker(), { timeout: 1500 });
+    } else {
+      setTimeout(() => this.initWorker(), 300);
+    }
   }
 
   // 1. Worker Setup (Non-blocking background initialization)
   initWorker() {
     const loadingStatus = document.getElementById("loading-status");
-    this.updateStatusMessage('<span class="cas-init-spinner"></span> Initializing CAS engine (SymPy & NumPy)...');
+    if (loadingStatus) loadingStatus.textContent = "OpenMath CAS engine ready.";
 
     try {
       this.worker = new Worker("./js/cas-worker.js");
@@ -63,16 +75,15 @@ class OpenMathApplication {
         switch (data.type) {
           case "STATUS":
             if (loadingStatus) loadingStatus.textContent = data.message;
-            if (data.status === "loading") {
-              this.updateStatusMessage(`<span class="cas-init-spinner"></span> ${data.message}`);
-            } else {
-              this.updateStatusMessage(data.message);
+            if (this.isLoadingOverlayVisible()) {
+              this.setLoadingProgress(0, 0, data.message);
             }
             break;
 
           case "READY":
+            this.isPyodideReady = true;
             this.isWorkerReady = true;
-            this.updateStatusMessage("Ready");
+            if (loadingStatus) loadingStatus.textContent = "SymPy & NumPy CAS engine ready.";
             if (this.updateMemoryGauge) this.updateMemoryGauge();
             // Request Help catalog and set decimal separator
             this.worker.postMessage({ type: "GET_HELP_CATALOG" });
@@ -99,11 +110,13 @@ class OpenMathApplication {
 
           case "DOCUMENT_PARSED":
             if (data.error) {
+              this.hideLoadingOverlay();
               this.dialogManager.showAlert(`Could not parse document: ${data.error}`, "Import Error");
               this.updateStatusMessage(`Import error: ${data.error}`);
             } else if (data.cells && data.cells.length > 0) {
               this.openDocumentWithCells(data.cells, data.filename || "Imported.mw");
             } else {
+              this.hideLoadingOverlay();
               this.dialogManager.showAlert("The imported document contains no cells.", "Empty Document");
               this.updateStatusMessage("Imported document contains no cells.");
             }
@@ -117,9 +130,8 @@ class OpenMathApplication {
 
       this.worker.postMessage({ type: "INIT", basePath: "../" });
     } catch (err) {
-      console.error("Worker error:", err);
-      if (loadingStatus) loadingStatus.textContent = `Worker Init Error: ${err.message}`;
-      this.updateStatusMessage(`CAS Worker Init Error: ${err.message}`);
+      console.warn("Worker background init note:", err);
+      // FastCAS remains 100% active and functional
     }
   }
 
@@ -463,6 +475,9 @@ class OpenMathApplication {
         break;
       case "matrix_wizard":
         this.dialogManager.openDialog("dialog-matrix-wizard");
+        break;
+      case "insert_table":
+        this.triggerTableInsertDialog();
         break;
       case "insert_image":
         this.triggerImageInsertDialog();
@@ -1039,9 +1054,58 @@ class OpenMathApplication {
     }
   }
 
+  // 8.5 Loading Overlay Controller (Matches ui/loading_overlay.py)
+  showLoadingOverlay(filename = "", message = "Reading worksheet archive...") {
+    const overlay = document.getElementById("loading-overlay");
+    const fnEl = document.getElementById("loading-filename");
+    const statusEl = document.getElementById("loading-status");
+    const barEl = document.getElementById("loading-progress-bar");
+    if (!overlay) return;
+
+    if (fnEl) {
+      fnEl.textContent = filename ? `File: ${filename}` : "";
+      fnEl.style.display = filename ? "block" : "none";
+    }
+    if (statusEl) statusEl.textContent = message;
+    if (barEl) {
+      barEl.style.width = "0%";
+      barEl.style.transition = "width 0.15s ease";
+    }
+    overlay.style.display = "flex";
+  }
+
+  setLoadingProgress(current, total, message = "") {
+    const barEl = document.getElementById("loading-progress-bar");
+    const statusEl = document.getElementById("loading-status");
+    if (barEl) {
+      if (total > 0) {
+        const pct = Math.min(100, Math.max(0, Math.round((current / total) * 100)));
+        barEl.style.width = `${pct}%`;
+      } else {
+        barEl.style.width = "100%";
+      }
+    }
+    if (statusEl && message) {
+      statusEl.textContent = message;
+    }
+  }
+
+  hideLoadingOverlay() {
+    const overlay = document.getElementById("loading-overlay");
+    if (overlay) {
+      overlay.style.display = "none";
+    }
+  }
+
+  isLoadingOverlayVisible() {
+    const overlay = document.getElementById("loading-overlay");
+    return overlay && overlay.style.display !== "none";
+  }
+
   // 9. File I/O & Document Import/Export
   openDocumentWithCells(cells, filename = "Imported.mw") {
     if (!cells || cells.length === 0) {
+      this.hideLoadingOverlay();
       this.dialogManager.showAlert("The imported document contains no cells.", "Empty Document");
       this.updateStatusMessage("Imported document contains no cells.");
       return;
@@ -1059,7 +1123,12 @@ class OpenMathApplication {
       targetWs = this.createNewWorksheet(filename);
     }
     targetWs.filePath = filename;
-    targetWs.loadImportedCells(cells);
+    
+    // Batch render cells with live progress reporting
+    targetWs.loadImportedCells(cells, (curr, total, msg) => {
+      this.setLoadingProgress(curr, total, msg);
+    });
+
     this.setWindowTitle(filename);
     this.updateStatusPath(filename);
     this.updateStatusMessage(`Opened ${filename} (${cells.length} cells).`);
@@ -1348,49 +1417,48 @@ class OpenMathApplication {
   loadFile(file) {
     if (!file) return;
     this.updateStatusMessage(`Loading ${file.name}...`);
+    this.showLoadingOverlay(file.name, "Reading worksheet file...");
 
     const reader = new FileReader();
-    reader.onload = (re) => {
-      const buffer = re.target.result;
-      const uint8 = new Uint8Array(buffer);
-      // Check for zip magic header: PK\x03\x04
-      if (uint8.length >= 4 && uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04) {
-        // Use native FileReader readAsDataURL for instant zero-copy base64
-        const dataUrlReader = new FileReader();
-        dataUrlReader.onload = (dr) => {
-          const res = dr.target.result || "";
-          const b64 = res.includes(",") ? res.split(",")[1] : res;
-          const content = "BASE64_ZIP:" + b64;
-          this.worker.postMessage({ type: "PARSE_DOCUMENT", filename: file.name, content });
-        };
-        dataUrlReader.readAsDataURL(file);
-        return;
-      }
+    reader.onload = async (re) => {
+      try {
+        const buffer = re.target.result;
+        this.setLoadingProgress(0, 0, "Parsing worksheet elements...");
 
-      const decoder = new TextDecoder("utf-8");
-      const textContent = decoder.decode(buffer);
-      const stripped = textContent.trim();
+        // Instant client-side pure JS parser with Wheeler image decompression & desktop fidelity
+        const result = await parseMwDocument(buffer, file.name, (curr, total, msg) => {
+          this.setLoadingProgress(curr, total, msg);
+        });
 
-      // Fast JS-side parsing for JSON or plain text formats
-      if (stripped.startsWith("[") || stripped.startsWith("{") || (!stripped.startsWith("<") && !file.name.endsWith(".mw") && !file.name.endsWith(".mv"))) {
-        try {
-          const jsParsed = this.parseDocumentInJS(textContent, file.name);
-          if (jsParsed && jsParsed.length > 0) {
-            this.openDocumentWithCells(jsParsed, file.name);
-            return;
-          }
-        } catch (err) {
-          console.warn("Fast JS parse error:", err);
+        if (result && result.cells && result.cells.length > 0) {
+          this.openDocumentWithCells(result.cells, file.name);
+          return;
         }
-      }
 
-      // Delegate .mw, .mv, and XML files to the CAS engine with full WorksheetIO desktop fidelity
-      this.updateStatusMessage(`Parsing ${file.name} with OpenMath CAS engine...`);
-      this.worker.postMessage({
-        type: "PARSE_DOCUMENT",
-        filename: file.name,
-        content: textContent
-      });
+        // Secondary fallback to worker if needed
+        if (this.worker && this.isPyodideReady) {
+          this.setLoadingProgress(0, 0, "Parsing with secondary CAS engine...");
+          const decoder = new TextDecoder("utf-8");
+          const textContent = decoder.decode(buffer);
+          this.worker.postMessage({
+            type: "PARSE_DOCUMENT",
+            filename: file.name,
+            content: textContent
+          });
+          return;
+        }
+
+        this.hideLoadingOverlay();
+        this.dialogManager.showAlert(result.error || "The imported document contains no cells.", "Empty Document");
+      } catch (err) {
+        console.error("Document parse error:", err);
+        this.hideLoadingOverlay();
+        this.dialogManager.showAlert(`Could not parse document: ${err.message || err}`, "Import Error");
+      }
+    };
+    reader.onerror = (err) => {
+      this.hideLoadingOverlay();
+      this.dialogManager.showAlert(`Could not read file: ${err}`, "File Read Error");
     };
     reader.readAsArrayBuffer(file);
   }
@@ -1441,6 +1509,19 @@ class OpenMathApplication {
       }
     };
     imgInput.click();
+  }
+
+  triggerTableInsertDialog() {
+    const ws = this.getActiveWorksheet();
+    if (!ws) return;
+    this.dialogManager.showPrompt("Enter table dimensions (Rows x Columns, e.g. 2x3):", "2x3", (val) => {
+      if (!val || !val.trim()) return;
+      let [rows, cols] = val.toLowerCase().split(/x|,|\s+/).filter(Boolean).map(n => parseInt(n.trim(), 10));
+      rows = isNaN(rows) || rows < 1 ? 2 : Math.min(50, rows);
+      cols = isNaN(cols) || cols < 1 ? 3 : Math.min(20, cols);
+      ws.insertTable(rows, cols);
+      this.updateStatusMessage(`Inserted ${rows}x${cols} table.`);
+    });
   }
 
   initDragAndDrop() {

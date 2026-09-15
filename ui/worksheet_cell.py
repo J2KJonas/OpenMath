@@ -5506,18 +5506,43 @@ class CellInputEdit(QTextEdit):
 
         cursor = QTextCursor(self.document())
         cursor.beginEditBlock()
-        while not cursor.atEnd():
-            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
-            fmt = cursor.charFormat()
-            char_mode = fmt.property(PROP_MODE) or self.current_typing_mode
-            if char_mode == '1d_math':
-                fmt.setForeground(QColor("#fb7185" if is_dark else "#b22222"))
-            elif char_mode == '2d_math':
-                fmt.setForeground(QColor("#f8fafc" if is_dark else "#000000"))
-            else:
-                fmt.setForeground(QColor("#f8fafc" if is_dark else "#1e293b"))
-            cursor.setCharFormat(fmt)
-            cursor.clearSelection()
+        block = self.document().begin()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                frag = it.fragment()
+                if frag.isValid():
+                    fmt = frag.charFormat()
+                    char_mode = fmt.property(PROP_MODE) or self.current_typing_mode
+                    if char_mode == '1d_math':
+                        fmt.setForeground(QColor("#fb7185" if is_dark else "#b22222"))
+                    elif char_mode == '2d_math':
+                        fmt.setForeground(QColor("#f8fafc" if is_dark else "#000000"))
+                    else:
+                        fmt.setForeground(QColor("#f8fafc" if is_dark else "#1e293b"))
+                    cursor.setPosition(frag.position())
+                    cursor.setPosition(frag.position() + frag.length(), QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setCharFormat(fmt)
+                it += 1
+            block = block.next()
+
+        # Update tables in document to match theme instantly
+        border_col = QColor("#2b384c") if is_dark else QColor("#cbd5e1")
+        cell_bg = QColor("#18202e") if is_dark else QColor("#ffffff")
+        for tbl in self._find_all_tables():
+            t_fmt = tbl.format()
+            t_fmt.setBorderBrush(border_col)
+            tbl.setFormat(t_fmt)
+            for r in range(tbl.rows()):
+                for c in range(tbl.columns()):
+                    t_cell = tbl.cellAt(r, c)
+                    if t_cell.isValid():
+                        c_fmt = t_cell.format().toTableCellFormat()
+                        bg = c_fmt.background().color()
+                        if not bg.isValid() or bg.name() in ("#ffffff", "#18202e", "#000000", "#1e2838"):
+                            c_fmt.setBackground(cell_bg)
+                            t_cell.setFormat(c_fmt)
+
         cursor.endEditBlock()
 
         curr_fmt = self._get_char_format_for_mode(self.current_typing_mode)
@@ -5532,6 +5557,20 @@ class CellInputEdit(QTextEdit):
                     border-radius: 2px;
                 }}
             """)
+
+    def insert_table_grid(self, rows: int = 2, cols: int = 3):
+        """Insert an authentic QTextTable grid at cursor."""
+        from PyQt6.QtGui import QTextTableFormat
+        cursor = self.textCursor()
+        table_format = QTextTableFormat()
+        table_format.setCellPadding(6)
+        table_format.setCellSpacing(0)
+        table_format.setBorder(1)
+        is_dark = (getattr(self, 'theme_mode', '') == 'dark')
+        border_col = QColor("#2b384c" if is_dark else "#cbd5e1")
+        table_format.setBorderBrush(border_col)
+        cursor.insertTable(max(1, rows), max(1, cols), table_format)
+        self.setTextCursor(cursor)
 
     def _get_subscript_format(self, level: int = 0) -> QTextCharFormat:
         """

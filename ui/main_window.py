@@ -2765,6 +2765,7 @@ class MainWindow(QMainWindow):
         menu_insert.addAction(self.act_toggle_mode_f5)
         menu_insert.addSeparator()
         menu_insert.addAction("Image...", self._on_insert_image)
+        menu_insert.addAction("Table...", self._on_insert_table)
         menu_insert.addAction(self.act_matrix)
         menu_insert.addSeparator()
         menu_insert.addAction("polygonOmråde Linear Inequality Region", lambda: self._on_insert_template("polygonOmråde(Uligheder, x = -1 .. 13, y = -1 .. 12)"))
@@ -3305,6 +3306,22 @@ class MainWindow(QMainWindow):
         ws = self._ensure_active_worksheet()
         if ws and ws.active_cell and hasattr(ws.active_cell, 'input_edit'):
             ws.active_cell.input_edit._on_insert_image_dialog()
+
+    def _on_insert_table(self):
+        from PyQt6.QtWidgets import QInputDialog
+        ws = self._ensure_active_worksheet()
+        if not ws:
+            return
+        rows, ok1 = QInputDialog.getInt(self, "Insert Table", "Number of rows:", 2, 1, 50, 1)
+        if not ok1:
+            return
+        cols, ok2 = QInputDialog.getInt(self, "Insert Table", "Number of columns:", 3, 1, 20, 1)
+        if not ok2:
+            return
+        if not ws.active_cell:
+            ws.add_cell()
+        if ws.active_cell and hasattr(ws.active_cell, 'input_edit'):
+            ws.active_cell.input_edit.insert_table_grid(rows, cols)
 
     def _open_matrix_dialog(self):
         dialog = MatrixDialog(self, theme_mode=self.theme_mode)

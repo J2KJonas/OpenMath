@@ -111,8 +111,11 @@ export class PaletteManager {
     const clearVarsBtn = document.getElementById("btn-clear-variables");
     if (clearVarsBtn) {
       clearVarsBtn.addEventListener("click", () => {
-        this.app.worker.postMessage({ type: "RESET" });
-        setTimeout(() => this.refreshVariables(), 150);
+        if (this.app.fastCAS) this.app.fastCAS.reset();
+        if (this.app.worker && this.app.isPyodideReady) {
+          this.app.worker.postMessage({ type: "RESET" });
+        }
+        this.refreshVariables();
       });
     }
 
@@ -127,7 +130,11 @@ export class PaletteManager {
   }
 
   refreshVariables() {
-    if (this.app.worker) {
+    if (this.app.fastCAS) {
+      const vars = this.app.fastCAS.getVariables();
+      this.updateVariablesTable(vars);
+    }
+    if (this.app.worker && this.app.isPyodideReady) {
       this.app.worker.postMessage({ type: "WHOS" });
     }
   }

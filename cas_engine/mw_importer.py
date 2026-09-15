@@ -305,12 +305,13 @@ class WorksheetIO:
                     except Exception:
                         pad_str = "6px 10px"
 
-                    bg_col = "#ffffff"
+                    bg_col = "transparent"
                     if fill:
                         m_rgb = re.search(r'\[(\d+),\s*(\d+),\s*(\d+)\]', fill)
                         if m_rgb:
                             r_c, g_c, b_c = [int(x) for x in m_rgb.groups()]
-                            bg_col = f"#{r_c:02x}{g_c:02x}{b_c:02x}"
+                            if r_c < 250 or g_c < 250 or b_c < 250:
+                                bg_col = f"#{r_c:02x}{g_c:02x}{b_c:02x}"
 
                     cell_pieces = []
                     for tf in cell.iter('Text-field'):
