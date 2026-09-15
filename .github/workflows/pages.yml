@@ -13,7 +13,7 @@ on:
       - '.nojekyll'
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages and gh-pages branch
+# Sets permissions of the GITHUB_TOKEN
 permissions:
   contents: write
   pages: write
@@ -25,10 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -47,26 +44,32 @@ jobs:
           cp resources/AppIcon.png web/favicon.png
           touch web/.nojekyll
 
-      - name: Setup Pages (GitHub Actions mode)
+      - name: Setup Pages
         id: pages_setup
         continue-on-error: true
         uses: actions/configure-pages@v5
 
-      - name: Upload artifact (GitHub Actions mode)
-        if: steps.pages_setup.outcome == 'success'
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './web'
 
-      - name: Deploy to GitHub Pages (GitHub Actions mode)
-        if: steps.pages_setup.outcome == 'success'
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Deploy to gh-pages branch (Branch fallback mode)
+      - name: Deploy to gh-pages branch (Branch mode)
         uses: peaceiris/actions-gh-pages@v4
         continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./web
           force_orphan: true
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
