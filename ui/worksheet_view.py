@@ -1808,6 +1808,28 @@ class WorksheetView(QWidget):
             self.adjust_visible_cells_height()
             QApplication.processEvents()
 
+        # Save focus, selection, and temporarily hide output remove buttons (✕)
+        try:
+            from PyQt6 import sip
+        except ImportError:
+            import sip
+        prev_focus = QApplication.focusWidget()
+        if prev_focus and not sip.isdeleted(prev_focus):
+            try:
+                prev_focus.clearFocus()
+            except Exception:
+                pass
+
+        prev_selected = list(self.selected_cells)
+        self.clear_cell_selection()
+
+        hidden_remove_buttons = []
+        for cell in self.cells:
+            btn = getattr(cell, '_btn_remove_output', None)
+            if btn is not None and not sip.isdeleted(btn) and not btn.isHidden():
+                btn.hide()
+                hidden_remove_buttons.append(btn)
+
         try:
             painter = QPainter(writer)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -1892,7 +1914,7 @@ class WorksheetView(QWidget):
                 if getattr(cell, 'is_collapsed', False):
                     continue
                 arrow = getattr(cell, 'btn_section_toggle', None)
-                if not arrow or not arrow.isVisible():
+                if not arrow or arrow.isHidden():
                     continue
 
                 sec_level = getattr(cell, 'section_level', 0)
@@ -1910,16 +1932,23 @@ class WorksheetView(QWidget):
                     continue
 
                 last_cell = children[-1]
-                tip = arrow.mapTo(cell, QPoint(arrow.width() // 2, arrow.height() - 2))
+                try:
+                    tip = arrow.mapTo(cell, QPoint(arrow.width() // 2, arrow.height() - 2))
+                    tip_x = tip.x()
+                    tip_y = tip.y()
+                except Exception:
+                    tip_x = (sec_level * 26) + 14
+                    tip_y = 16
+
                 sections_info.append({
                     'header_cell': cell,
                     'last_cell': last_cell,
                     'all_cells': [cell] + children,
-                    'tip_x': tip.x(),
-                    'tip_y': tip.y(),
+                    'tip_x': tip_x,
+                    'tip_y': tip_y,
                 })
 
-            scope_pen = QPen(QColor("#8e9aaf"), max(1, round(1.2 * scale)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap)
+            scope_pen = QPen(QColor("#475569"), max(2, round(1.6 * scale)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap)
 
             for page_idx, page_items in enumerate(pages):
                 if page_idx > 0:
@@ -1976,13 +2005,28 @@ class WorksheetView(QWidget):
                     if y_end > y_start:
                         painter.drawLine(line_x, y_start, line_x, y_end)
                         if is_last_page_for_section:
-                            tick_len = int(8 * scale)
+                            tick_len = int(12 * scale)
                             painter.drawLine(line_x, y_end, line_x + tick_len, y_end)
 
                 painter.restore()
 
             painter.end()
         finally:
+            for btn in hidden_remove_buttons:
+                if not sip.isdeleted(btn):
+                    btn.show()
+
+            for c in prev_selected:
+                if not sip.isdeleted(c):
+                    c.set_cell_selected(True)
+                    self.selected_cells.append(c)
+
+            if prev_focus and not sip.isdeleted(prev_focus):
+                try:
+                    prev_focus.setFocus()
+                except Exception:
+                    pass
+
             if hasattr(self, 'container'):
                 self.container.setMinimumWidth(orig_min)
                 self.container.setMaximumWidth(orig_max)

@@ -11,7 +11,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$SCRIPT_DIR"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 APP_NAME="OpenMath"
 APP_BUNDLE_DEST_APPS="$HOME/Applications/${APP_NAME}.app"

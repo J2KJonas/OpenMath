@@ -46,6 +46,26 @@ class OpenMathApplication {
     this.initDragAndDrop();
     window.addEventListener("resize", () => this.updateTabOverflow());
 
+    window.addEventListener("beforeprint", () => {
+      const ws = this.getActiveWorksheet();
+      if (ws) {
+        ws.drawScopeOverlay(true);
+      }
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+      try {
+        const sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+      } catch (e) {}
+    });
+    window.addEventListener("afterprint", () => {
+      const ws = this.getActiveWorksheet();
+      if (ws) {
+        ws.drawScopeOverlay();
+      }
+    });
+
     // Start with Start.mw (default start page matching ui/main_window.py)
     this.createStartPageDocument();
 
@@ -419,10 +439,19 @@ class OpenMathApplication {
         if (this.activeDocId) this.closeDocument(this.activeDocId);
         break;
       case "undo":
-        document.execCommand("undo");
+        if (ws) ws.undo();
+        else document.execCommand("undo");
         break;
       case "redo":
-        document.execCommand("redo");
+        if (ws) ws.redo();
+        else document.execCommand("redo");
+        break;
+      case "delete":
+        if (ws && ws.activeCellId) {
+          ws.deleteCell(ws.activeCellId);
+        } else {
+          document.execCommand("delete");
+        }
         break;
       case "cut":
         document.execCommand("cut");
@@ -538,8 +567,8 @@ class OpenMathApplication {
     document.getElementById("tb-btn-save").onclick = () => this.saveActiveDocument();
     document.getElementById("tb-btn-print").onclick = () => this.executeAction("print");
 
-    document.getElementById("tb-btn-undo").onclick = () => document.execCommand("undo");
-    document.getElementById("tb-btn-redo").onclick = () => document.execCommand("redo");
+    document.getElementById("tb-btn-undo").onclick = () => this.executeAction("undo");
+    document.getElementById("tb-btn-redo").onclick = () => this.executeAction("redo");
 
     document.getElementById("tb-btn-eval").onclick = () => this.executeAction("execute_active");
     document.getElementById("tb-btn-eval-all").onclick = () => this.executeAction("execute_all");
@@ -831,16 +860,45 @@ class OpenMathApplication {
   initGlobalShortcuts() {
     window.addEventListener("keydown", (e) => {
       const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      const isShift = e.shiftKey;
+      const ws = this.getActiveWorksheet();
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (
+        activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
+        activeEl.isContentEditable
+      );
 
-      if (isCtrlOrMeta && e.key.toLowerCase() === "n") {
+      if (isCtrlOrMeta && isShift && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        this.executeAction("redo");
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        this.executeAction("redo");
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        this.executeAction("undo");
+      } else if (isCtrlOrMeta && isShift && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        this.executeAction("save_as");
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        this.saveActiveDocument();
+      } else if (isCtrlOrMeta && isShift && e.key === "Enter") {
+        e.preventDefault();
+        this.executeAction("execute_all");
+      } else if (isCtrlOrMeta && e.key === "Enter") {
+        e.preventDefault();
+        this.executeAction("execute_active");
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "n") {
         e.preventDefault();
         this.createNewWorksheet();
       } else if (isCtrlOrMeta && e.key.toLowerCase() === "o") {
         e.preventDefault();
         this.triggerFileOpenDialog();
-      } else if (isCtrlOrMeta && e.key.toLowerCase() === "s") {
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "w") {
         e.preventDefault();
-        this.saveActiveDocument();
+        this.executeAction("close_tab");
       } else if (isCtrlOrMeta && e.key.toLowerCase() === "p") {
         e.preventDefault();
         this.executeAction("print");
@@ -853,6 +911,9 @@ class OpenMathApplication {
       } else if (isCtrlOrMeta && e.key.toLowerCase() === "k") {
         e.preventDefault();
         this.executeAction("insert_cell_before");
+      } else if (e.altKey && e.key === "Enter") {
+        e.preventDefault();
+        this.executeAction("insert_cell_after");
       } else if (isCtrlOrMeta && (e.key === "+" || e.key === "=")) {
         e.preventDefault();
         this.zoomWorksheet(1);
@@ -861,15 +922,18 @@ class OpenMathApplication {
         this.zoomWorksheet(-1);
       } else if (isCtrlOrMeta && e.key === "0") {
         e.preventDefault();
-        const ws = this.getActiveWorksheet();
         if (ws) ws.setZoom(100);
       } else if (isCtrlOrMeta && e.key === ",") {
         e.preventDefault();
         this.dialogManager.openDialog("dialog-options");
       } else if (e.key === "F5") {
         e.preventDefault();
-        const ws = this.getActiveWorksheet();
         if (ws && ws.activeCellId) ws.toggleCellMode(ws.activeCellId);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && !isInputFocused) {
+        if (ws && ws.activeCellId) {
+          e.preventDefault();
+          this.executeAction("delete");
+        }
       }
     });
   }
@@ -1589,16 +1653,23 @@ class OpenMathApplication {
   }
 
   executeExportPdf(unfoldSections) {
-    if (unfoldSections) {
-      const ws = this.getActiveWorksheet();
-      if (ws) {
-        ws.cells.forEach(c => {
-          if (c.isSectionHeader) c.isCollapsed = false;
-        });
-        ws.updateSectionFolding();
-        ws.drawScopeOverlay();
-      }
+    const ws = this.getActiveWorksheet();
+    if (unfoldSections && ws) {
+      ws.cells.forEach(c => {
+        if (c.isSectionHeader) c.isCollapsed = false;
+      });
+      ws.updateSectionFolding();
     }
+    if (ws) {
+      ws.drawScopeOverlay(true);
+    }
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+    try {
+      const sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+    } catch (e) {}
     window.print();
   }
 

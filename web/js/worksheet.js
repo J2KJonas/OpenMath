@@ -65,9 +65,111 @@ export class WorksheetView {
 
     this.undoStack = [];
     this.redoStack = [];
+    this._isUndoRedo = false;
+    this._typingUndoCaptured = false;
+    this._typingDebounce = null;
 
     this.renderSkeleton();
-    this.addCell(); // Default first empty cell
+    this.addCell({ _skipUndo: true }); // Default first empty cell
+  }
+
+  pushUndoState() {
+    if (this._isUndoRedo || this._isLoading) return;
+    const snapshot = {
+      cells: JSON.parse(JSON.stringify(this.getSerializableCells())),
+      activeCellId: this.activeCellId,
+      activeCellIndex: this.cells.findIndex(c => c.id === this.activeCellId)
+    };
+    this.undoStack.push(snapshot);
+    if (this.undoStack.length > 60) {
+      this.undoStack.shift();
+    }
+    this.redoStack = [];
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) {
+      document.execCommand("undo");
+      return;
+    }
+    const currentSnapshot = {
+      cells: JSON.parse(JSON.stringify(this.getSerializableCells())),
+      activeCellId: this.activeCellId,
+      activeCellIndex: this.cells.findIndex(c => c.id === this.activeCellId)
+    };
+    this.redoStack.push(currentSnapshot);
+    const prevState = this.undoStack.pop();
+    this._isUndoRedo = true;
+    try {
+      this.restoreFromSnapshot(prevState);
+    } finally {
+      this._isUndoRedo = false;
+    }
+    this.app.updateStatusMessage("Undo");
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) {
+      document.execCommand("redo");
+      return;
+    }
+    const currentSnapshot = {
+      cells: JSON.parse(JSON.stringify(this.getSerializableCells())),
+      activeCellId: this.activeCellId,
+      activeCellIndex: this.cells.findIndex(c => c.id === this.activeCellId)
+    };
+    this.undoStack.push(currentSnapshot);
+    const nextState = this.redoStack.pop();
+    this._isUndoRedo = true;
+    try {
+      this.restoreFromSnapshot(nextState);
+    } finally {
+      this._isUndoRedo = false;
+    }
+    this.app.updateStatusMessage("Redo");
+  }
+
+  restoreFromSnapshot(snapshot) {
+    if (!snapshot || !snapshot.cells) return;
+    this.cellsContainer.innerHTML = "";
+    this.cells = [];
+    this.executionCounter = 0;
+    this.plotInstances.clear();
+
+    const cellsData = snapshot.cells;
+    for (const c of cellsData) {
+      const isSec = !!c.is_section_header;
+      const mode = isSec ? "section" : (c.input_mode === 2 ? "text" : (c.input_mode === 1 ? "1d_math" : (c.input_mode === 3 ? "nonexec_math" : "2d_math")));
+      this.addCell({
+        id: c.cell_id,
+        mode,
+        isSectionHeader: isSec,
+        sectionLevel: c.section_level || 0,
+        sectionTitle: c.section_title || "",
+        isCollapsed: !!c.is_collapsed,
+        input: c.input || "",
+        result: c.result || null,
+        embeddedImages: c.embedded_images || null,
+        _skipUndo: true
+      });
+    }
+
+    if (this.cells.length === 0) {
+      this.addCell({ _skipUndo: true });
+    }
+
+    this.initSectionFolding();
+    this.drawScopeOverlay(true);
+
+    let targetId = snapshot.activeCellId;
+    if (!targetId && snapshot.activeCellIndex >= 0 && this.cells[snapshot.activeCellIndex]) {
+      targetId = this.cells[snapshot.activeCellIndex].id;
+    }
+    if (targetId && this.cells.some(c => c.id === targetId)) {
+      this.focusCell(targetId);
+    } else if (this.cells.length > 0) {
+      this.focusCell(this.cells[0].id);
+    }
   }
 
   renderSkeleton() {
@@ -122,14 +224,17 @@ export class WorksheetView {
   }
 
   addCell(options = {}, insertIntoDom = true) {
-    const id = "cell_" + Math.random().toString(36).substring(2, 9);
+    if (!this._isUndoRedo && !this._isLoading && this.cells.length > 0 && !options._skipUndo) {
+      this.pushUndoState();
+    }
+    const id = options.id || ("cell_" + Math.random().toString(36).substring(2, 9));
     const mode = options.mode || "2d_math"; // "2d_math", "1d_math", "text", "section"
     const isSection = options.isSectionHeader || mode === "section";
     const insertAfterId = options.insertAfterId;
 
     let sectionLevel = options.sectionLevel !== undefined ? options.sectionLevel : 0;
-    if (options.sectionLevel === undefined && insertAfterId) {
-      const prevCell = this.cells.find(c => c.id === insertAfterId);
+    if (options.sectionLevel === undefined) {
+      const prevCell = insertAfterId ? this.cells.find(c => c.id === insertAfterId) : (this.cells.length > 0 ? this.cells[this.cells.length - 1] : null);
       if (prevCell) {
         sectionLevel = prevCell.sectionLevel || 0;
       }
@@ -217,9 +322,34 @@ export class WorksheetView {
 
       const titleEdit = cellDiv.querySelector(".section-title-edit");
       titleEdit.oninput = () => {
+        if (!this._typingUndoCaptured) {
+          this.pushUndoState();
+          this._typingUndoCaptured = true;
+        }
+        clearTimeout(this._typingDebounce);
+        this._typingDebounce = setTimeout(() => {
+          this._typingUndoCaptured = false;
+        }, 700);
+
         cell.sectionTitle = titleEdit.innerText;
         cell.input = titleEdit.innerText;
         this.app.contextPanel.setTargetExpression(cell.sectionTitle);
+      };
+      titleEdit.onblur = () => {
+        this._typingUndoCaptured = false;
+      };
+      titleEdit.onkeydown = (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            this.outdentActiveCell();
+          } else {
+            this.indentActiveCell();
+          }
+        } else if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          this.addCell({ insertAfterId: cell.id });
+        }
       };
       titleEdit.onfocus = () => this.setActiveCell(cell.id);
     } else {
@@ -259,8 +389,20 @@ export class WorksheetView {
       }
 
       inputEdit.onfocus = () => this.setActiveCell(cell.id);
+      inputEdit.onblur = () => {
+        this._typingUndoCaptured = false;
+      };
 
       inputEdit.oninput = () => {
+        if (!this._typingUndoCaptured) {
+          this.pushUndoState();
+          this._typingUndoCaptured = true;
+        }
+        clearTimeout(this._typingDebounce);
+        this._typingDebounce = setTimeout(() => {
+          this._typingUndoCaptured = false;
+        }, 700);
+
         const isCurrentText = cell.mode === "text" || cell.isTable || (cell.embeddedImages && Object.keys(cell.embeddedImages).length > 0);
         cell.input = isCurrentText ? inputEdit.innerHTML : inputEdit.innerText;
         // In 2D Math mode, auto-convert _1 and ^2 to Unicode sub/superscript
@@ -287,7 +429,14 @@ export class WorksheetView {
 
       inputEdit.onkeydown = (e) => {
         const isCurrentText = cell.mode === "text" || cell.isTable || cell.mode === "nonexec_math";
-        if (e.key === "Enter" && !e.shiftKey) {
+        if (e.key === "Tab" && !e.target.closest("td")) {
+          e.preventDefault();
+          if (e.shiftKey) {
+            this.outdentActiveCell();
+          } else {
+            this.indentActiveCell();
+          }
+        } else if (e.key === "Enter" && !e.shiftKey) {
           if (isCurrentText) {
             // Text and non-executable math cells should NOT execute as math
             return;
@@ -391,6 +540,7 @@ export class WorksheetView {
   setCellMode(cellId, mode) {
     const cell = this.cells.find(c => c.id === cellId);
     if (!cell || cell.isSectionHeader) return;
+    this.pushUndoState();
 
     cell.mode = mode;
     const isText = mode === "text";
@@ -418,6 +568,7 @@ export class WorksheetView {
   executeCell(cellId) {
     const cell = this.cells.find(c => c.id === cellId);
     if (!cell || cell.isSectionHeader || cell.mode === "text" || cell.mode === "nonexec_math") return;
+    this.pushUndoState();
 
     const input = (cell.input || "").trim();
     if (!input) {
@@ -597,6 +748,7 @@ export class WorksheetView {
   deleteCell(cellId) {
     const idx = this.cells.findIndex(c => c.id === cellId);
     if (idx === -1) return;
+    this.pushUndoState();
 
     const cell = this.cells[idx];
     if (cell.domElement && cell.domElement.parentNode) {
@@ -622,6 +774,7 @@ export class WorksheetView {
   }
 
   clearWorksheet() {
+    this.pushUndoState();
     this.cellsContainer.innerHTML = "";
     this.cells = [];
     this.executionCounter = 0;
@@ -699,13 +852,18 @@ export class WorksheetView {
   onSectionToggled(sectionCellId) {
     const secCell = this.cells.find(c => c.id === sectionCellId);
     if (!secCell) return;
+    this.pushUndoState();
 
     secCell.isCollapsed = !secCell.isCollapsed;
     this.initSectionFolding();
     this.drawScopeOverlay();
   }
 
-  drawScopeOverlay() {
+  drawScopeOverlay(immediate = false) {
+    if (immediate) {
+      this._performDrawScopeOverlay();
+      return;
+    }
     if (this._scopeOverlayScheduled) return;
     this._scopeOverlayScheduled = true;
     requestAnimationFrame(() => {
@@ -732,8 +890,8 @@ export class WorksheetView {
     ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
 
     const isLight = this.app.theme !== "dark";
-    ctx.strokeStyle = isLight ? "#8e9aaf" : "#64748b";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = isLight ? "#475569" : "#94a3b8";
+    ctx.lineWidth = 1.5;
     ctx.lineCap = "square";
 
     for (let i = 0; i < this.cells.length; i++) {
@@ -770,7 +928,7 @@ export class WorksheetView {
           ctx.beginPath();
           ctx.moveTo(startX, startY);
           ctx.lineTo(startX, endY);
-          ctx.lineTo(startX + 8, endY);
+          ctx.lineTo(startX + 10, endY);
           ctx.stroke();
         }
       }
@@ -830,25 +988,29 @@ export class WorksheetView {
   indentActiveCell() {
     const cell = this.cells.find(c => c.id === this.activeCellId);
     if (!cell) return;
-    if (cell.isSectionHeader) {
-      cell.sectionLevel = Math.min(3, cell.sectionLevel + 1);
-      if (cell.domElement) {
+    this.pushUndoState();
+    cell.sectionLevel = Math.min(3, (cell.sectionLevel || 0) + 1);
+    if (cell.domElement) {
+      if (cell.isSectionHeader) {
         cell.domElement.className = `worksheet-cell section-header-cell level-${cell.sectionLevel}`;
       }
-      this.drawScopeOverlay();
+      cell.domElement.style.marginLeft = `${cell.sectionLevel * 26}px`;
     }
+    this.drawScopeOverlay();
   }
 
   outdentActiveCell() {
     const cell = this.cells.find(c => c.id === this.activeCellId);
     if (!cell) return;
-    if (cell.isSectionHeader) {
-      cell.sectionLevel = Math.max(0, cell.sectionLevel - 1);
-      if (cell.domElement) {
+    this.pushUndoState();
+    cell.sectionLevel = Math.max(0, (cell.sectionLevel || 0) - 1);
+    if (cell.domElement) {
+      if (cell.isSectionHeader) {
         cell.domElement.className = `worksheet-cell section-header-cell level-${cell.sectionLevel}`;
       }
-      this.drawScopeOverlay();
+      cell.domElement.style.marginLeft = cell.sectionLevel > 0 ? `${cell.sectionLevel * 26}px` : "";
     }
+    this.drawScopeOverlay();
   }
 
   loadImportedCells(cellList, progressCallback = null) {
