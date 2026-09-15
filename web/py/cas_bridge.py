@@ -22,6 +22,17 @@ def get_engine() -> CASEngine:
         _engine = CASEngine()
     return _engine
 
+def set_decimal_separator(sep: str) -> dict:
+    """Set the decimal separator character (',' or '.') in parser and formatter."""
+    try:
+        from cas_engine.formatter import MathFormatter
+        from cas_engine.parser import MathParser
+        MathFormatter.set_decimal_separator(sep)
+        MathParser.set_decimal_separator(sep)
+        return {"status": "success", "decimal_separator": sep}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 def evaluate_expression(expr: str, precision: int = 6) -> dict:
     """
     Evaluate mathematical expression using OpenMath CASEngine
@@ -54,11 +65,11 @@ def evaluate_expression(expr: str, precision: int = 6) -> dict:
                     "label": str(getattr(r, 'label', '') or '')
                 })
             plot_dict = {
-                "title": str(p_data.title or ""),
-                "x_label": str(p_data.x_label or "x"),
-                "y_label": str(p_data.y_label or "y"),
-                "x_lim": [float(v) for v in p_data.x_lim] if p_data.x_lim else None,
-                "y_lim": [float(v) for v in p_data.y_lim] if p_data.y_lim else None,
+                "title": str(getattr(p_data, 'title', '') or ""),
+                "x_label": str(getattr(p_data, 'x_label', '') or "x"),
+                "y_label": str(getattr(p_data, 'y_label', '') or "y"),
+                "x_lim": [float(v) for v in p_data.x_lim] if getattr(p_data, 'x_lim', None) else None,
+                "y_lim": [float(v) for v in p_data.y_lim] if getattr(p_data, 'y_lim', None) else None,
                 "is_polar": bool(getattr(p_data, 'is_polar', False)),
                 "curves": curves,
                 "regions": regions
@@ -75,9 +86,20 @@ def evaluate_expression(expr: str, precision: int = 6) -> dict:
             "plot_data": plot_dict,
             "execution_time_ms": round(float(getattr(res, 'execution_time_ms', 0.0)), 2),
             "suppress_output": bool(getattr(res, 'suppress_output', False)),
-            "error": None
+            "result_type": str(getattr(res, 'result_type', 'Symbolic') or 'Symbolic'),
+            "error": None,
+            "suggestion": None
         }
     except Exception as e:
+        suggestion = None
+        try:
+            from cas_engine.error_suggester import generate_candidates
+            cands = generate_candidates(expr)
+            if cands:
+                suggestion = cands[0]
+        except Exception:
+            pass
+
         return {
             "exact_latex": "",
             "numeric_latex": "",
@@ -89,7 +111,9 @@ def evaluate_expression(expr: str, precision: int = 6) -> dict:
             "plot_data": None,
             "execution_time_ms": 0.0,
             "suppress_output": False,
-            "error": f"{type(e).__name__}: {str(e)}"
+            "result_type": "Error",
+            "error": f"{type(e).__name__}: {str(e)}",
+            "suggestion": suggestion
         }
 
 def reset_workspace() -> dict:
@@ -102,8 +126,11 @@ def get_variables_list() -> dict:
     """Return dictionary of user-defined variables."""
     engine = get_engine()
     vars_dict = {}
-    for k, v in engine.get_variables().items():
-        vars_dict[k] = str(v)
+    try:
+        for k, v in engine.get_variables().items():
+            vars_dict[k] = str(v)
+    except Exception:
+        pass
     return vars_dict
 
 def get_system_info() -> dict:
@@ -115,6 +142,25 @@ def get_system_info() -> dict:
         "numpy_version": numpy.__version__,
         "python_version": sys.version
     }
+
+def get_help_catalog() -> list:
+    """Return list of functions, categories, syntax, and examples from Function Guide."""
+    try:
+        from cas_engine.function_guide import CATALOG
+        result = []
+        for fn in CATALOG:
+            examples = [{"label": ex.label, "code": ex.code} for ex in fn.examples]
+            result.append({
+                "name": fn.name,
+                "syntax": fn.syntax,
+                "category": fn.category,
+                "description": fn.description,
+                "examples": examples,
+                "primary_example": fn.primary_example
+            })
+        return result
+    except Exception as e:
+        return []
 
 def parse_worksheet_document(content: str) -> dict:
     """
@@ -230,7 +276,7 @@ def parse_worksheet_document(content: str) -> dict:
                 "cell_id": str(uuid.uuid4())[:8],
                 "execution_idx": len(fallback_cells) + 1,
                 "input": line,
-                "input_mode": 1,
+                "input_mode": 0,
                 "mode": "math",
                 "is_section_header": False,
                 "result": None
@@ -239,4 +285,68 @@ def parse_worksheet_document(content: str) -> dict:
         return {"cells": fallback_cells, "error": None}
     return {"cells": [], "error": "No calculation cells found in document"}
 
+def export_worksheet_document(cells_data: list, format_type: str = 'mw') -> str:
+    """
+    Serialize cell list to .mw, .json, .tex, or .md string.
+    """
+    if format_type == 'json':
+        return json.dumps(cells_data, indent=2)
 
+    if format_type == 'mw':
+        try:
+            from cas_engine.mw_importer import WorksheetIO
+            return WorksheetIO.save_mw_string(cells_data)
+        except Exception as e:
+            return json.dumps(cells_data, indent=2)
+
+    if format_type == 'tex':
+        tex_lines = [
+            r"\documentclass{article}",
+            r"\usepackage{amsmath}",
+            r"\usepackage{amsfonts}",
+            r"\usepackage{geometry}",
+            r"\geometry{a4paper, margin=1in}",
+            r"\begin{document}",
+            r"\title{OpenMath Worksheet}",
+            r"\maketitle",
+            ""
+        ]
+        for c in cells_data:
+            if c.get("is_section_header"):
+                level = c.get("section_level", 0)
+                cmd = r"\section" if level == 0 else r"\subsection"
+                tex_lines.append(f"{cmd}{{{c.get('section_title', '')}}}\n")
+            elif c.get("input_mode") == 2:
+                tex_lines.append(f"{c.get('input', '')}\n")
+            else:
+                inp = c.get("input", "")
+                res = c.get("result") or {}
+                ltx = res.get("exact_latex") or res.get("exact_text") or ""
+                tex_lines.append(r"\begin{align*}")
+                tex_lines.append(f"\\text{{[> }} & {inp} \\\\")
+                if ltx:
+                    tex_lines.append(f"& = {ltx}")
+                tex_lines.append(r"\end{align*}")
+                tex_lines.append("")
+        tex_lines.append(r"\end{document}")
+        return "\n".join(tex_lines)
+
+    if format_type == 'md':
+        md_lines = ["# OpenMath Worksheet\n"]
+        for c in cells_data:
+            if c.get("is_section_header"):
+                level = c.get("section_level", 0)
+                prefix = "#" * (level + 2)
+                md_lines.append(f"{prefix} {c.get('section_title', '')}\n")
+            elif c.get("input_mode") == 2:
+                md_lines.append(f"{c.get('input', '')}\n")
+            else:
+                inp = c.get("input", "")
+                res = c.get("result") or {}
+                txt = res.get("exact_text") or ""
+                md_lines.append(f"```openmath\n> {inp}\n```")
+                if txt:
+                    md_lines.append(f"**Result:** `{txt}`\n")
+        return "\n".join(md_lines)
+
+    return json.dumps(cells_data, indent=2)

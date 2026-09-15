@@ -4,29 +4,28 @@ on:
   push:
     branches:
       - main
+      - webapp-khara
     paths:
       - 'web/**'
       - 'cas_engine/**'
       - '.github/workflows/pages.yml'
+      - 'index.html'
+      - '.nojekyll'
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Sets permissions of the GITHUB_TOKEN
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -43,8 +42,11 @@ jobs:
           mkdir -p web/cas_engine
           cp -r cas_engine/*.py web/cas_engine/
           cp resources/AppIcon.png web/favicon.png
+          touch web/.nojekyll
 
       - name: Setup Pages
+        id: pages_setup
+        continue-on-error: true
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
@@ -52,6 +54,22 @@ jobs:
         with:
           path: './web'
 
+      - name: Deploy to gh-pages branch (Branch mode)
+        uses: peaceiris/actions-gh-pages@v4
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          force_orphan: true
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
