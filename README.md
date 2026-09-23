@@ -1,19 +1,19 @@
 # OpenMath
 
-An open-source interactive computer algebra system (CAS) focusing on symbolic computation, typeset mathematical rendering, and an interactive worksheet document experience.
+An open-source interactive computer algebra system (CAS) and technical worksheet environment featuring symbolic computation, typeset mathematical rendering, dynamic plotting, and hierarchical document organization.
 
 **Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
 
 [![Web Demo](https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
-![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Web-blue?style=flat-square)
-![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)
-![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)
-![SymPy](https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/J2KJonas/OpenMath)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)](https://www.python.org/)
+[![GUI](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)](https://riverbankcomputing.com/software/pyqt/)
+[![CAS](https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square)](https://www.sympy.org/)
+[![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
 
 ---
 
-## 📸 Application Showcase
+## Application Overview
 
 <div align="center">
   <img src="resources/screenshots/openmath_desktop_light.png" alt="OpenMath Academic Light Theme - Symbolic Calculus" width="49%" />
@@ -27,134 +27,208 @@ An open-source interactive computer algebra system (CAS) focusing on symbolic co
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 🌐 Run in Browser (Web Demo — No Install Needed)
+### Web Demo (Browser Preview)
+
+A lightweight client-side preview is hosted on GitHub Pages for zero-install evaluation:
+
+- **Launch Demo**: [OpenMath Web Demo](https://j2kjonas.github.io/OpenMath/)
 
 > [!NOTE]
-> **Lightweight Web Demo**: The browser version is intended solely as a quick, zero-install preview. For actual workflows and full functionality, **the native desktop application is far superior and strongly recommended**—it features the complete Python/SymPy CAS engine, native PyQt6 interface, high-fidelity vector PDF exports, interactive tables, full plotting capabilities, and offline local file management.
+> **Demo Limitations**: The web application is an in-browser technology preview. For serious computation, full symbolic algebra, and production document export, **use the native desktop application**. The desktop release runs the full Python/SymPy engine with native system performance, high-fidelity vector PDF generation, local file management, and advanced engineering modules.
 
-OpenMath is accessible instantly online as a demo via GitHub Pages:
-👉 **[Launch OpenMath WebApp](https://j2kjonas.github.io/OpenMath/)**
+#### Desktop vs. Web Demo Comparison
+
+| Feature | Desktop Application (Recommended) | Web Demo (Browser) |
+| :--- | :--- | :--- |
+| **CAS Engine** | Full Python SymPy engine | Client-side JavaScript CAS worker |
+| **Performance** | Native multi-threaded execution | Browser JavaScript sandbox |
+| **Document Export** | 1:1 Vector PDF with hierarchy brackets | Browser print engine |
+| **Document Formats** | Full `.mw` XML, LaTeX (`.tex`), Markdown (`.md`) | Basic `.mw` import / export |
+| **Plotting** | High-performance dynamic 2D plotter | Canvas-based plotter |
+| **Engineering Math** | Complete bitwise, Q-format, & MCU calculation suite | Core calculus & arithmetic only |
+| **Installation** | Local Python environment | None (Instant access in browser) |
 
 ---
 
-### 💻 Run Desktop Application (Recommended — Full Power)
+### Desktop Installation and Launch
 
-#### 🍎 macOS
-- **One-Click Launch**: Double-click **`OpenMath.command`** in Finder.
-- **Or via Terminal**:
+OpenMath requires **Python 3.10** or newer.
+
+#### 1. macOS
+- **Finder**: Double-click `OpenMath.command`.
+- **Terminal**:
   ```bash
+  git clone https://github.com/J2KJonas/OpenMath.git
+  cd OpenMath
   ./run.sh
   ```
 
-#### 🐧 Linux (Ubuntu, Debian, Fedora, Arch, Zorin OS)
+#### 2. Linux (Ubuntu, Debian, Fedora, Arch, Zorin OS)
 ```bash
+git clone https://github.com/J2KJonas/OpenMath.git
+cd OpenMath
 ./run.sh
 ```
-*(Automatically creates an isolated `.venv` and installs prerequisites).*
+The universal launcher `./run.sh` automatically provisions a local virtual environment (`.venv`), installs all required dependencies from `requirements.txt`, and launches the application.
 
-#### 🪟 Windows
-- Double-click **`run.bat`**, or run:
+#### 3. Windows
+- Double-click `run.bat`, or run via Command Prompt / PowerShell:
   ```cmd
+  git clone https://github.com/J2KJonas/OpenMath.git
+  cd OpenMath
+  python -m venv .venv
+  .venv\Scripts\activate
+  pip install -r requirements.txt
   python main.py
   ```
 
-*(Optional shortcuts for Desktop and Application Menu can be generated from the `scripts/` directory).*
+---
+
+## Syntax and Examples
+
+OpenMath supports natural shorthand notation, standard mathematical operations, and SymPy expressions:
+
+### Variables and Functions
+```text
+f(x) := x^3 - 3*x + 2
+g(x) := sin(x) * exp(-x)
+a := 15.5
+```
+
+### Calculus
+```text
+diff(sin(x)*cos(x), x)                 # First derivative
+diff(x^4 + 2*x^2, x, 2)                # Second derivative
+integrate(x^2 * exp(-x), x)            # Indefinite integral
+integrate(exp(-x^2), (x, -oo, oo))     # Definite integral (Gaussian)
+limit(sin(x)/x, x, 0)                  # Limit as x -> 0
+series(exp(x), x, 0, 6)                # Taylor series expansion
+```
+
+### Algebra and Equation Solving
+```text
+solve(x^2 - 5*x + 6 = 0, x)            # Exact quadratic solutions
+solve([x + y = 5, 2*x - y = 1], [x, y])# Linear equation systems
+factor(x^3 - 3*x^2 + 3*x - 1)          # Polynomial factorization
+expand((x + 2)^4)                      # Polynomial expansion
+simplify((x^2 - 1)/(x - 1))            # Expression simplification
+```
+
+### Linear Algebra
+```text
+A := [[1, 2], [3, 4]]
+det(A)                                 # Determinant
+inv(A)                                 # Matrix inverse
+eigenvals(A)                           # Eigenvalues
+eigenvects(A)                          # Eigenvectors
+rref(A)                                # Reduced row echelon form
+```
+
+### Embedded Systems and Engineering Math
+```text
+to_q(3.14159, 16, 8)                   # Convert float to Q8.8 fixed-point
+from_q(804, 16, 8)                     # Convert raw Q-format integer to float
+ieee754(3.14159, "single")             # 32-bit float sign, exponent, and mantissa
+uart_baud(16000000, 115200)            # MCU UART prescaler & baud error analysis
+pwm_duty(1024, 75)                     # Timer PWM duty cycle computation
+```
 
 ---
 
-## ✨ Features
+## Features
 
-- **Interactive Worksheet Environment**:
-  - Chronological execution blocks with crisp LaTeX formula rendering.
-  - Multi-level hierarchical section folding (`1. Section`, `1.1 Subsection`) with continuous visual scope brackets (`└───`) and collapsible toggles (`▼` / `▶`).
-  - Custom $M \times N$ interactive tables with resize handles and theme adaptation.
-  - Per-cell precision configuration (2 to 50 digits) with instant exact $\leftrightarrow$ numeric toggling.
+### Interactive Worksheet Environment
+- **Chronological Execution**: Independent cells executed in sequence with LaTeX equation rendering.
+- **Hierarchical Section Folding**: Multi-level nesting (`1. Section`, `1.1 Subsection`) with continuous visual scope brackets and collapsible toggles.
+- **Interactive Tables**: Resizable $M \times N$ data grids with theme-aware styling and calculation propagation.
+- **Numerical Precision Control**: Per-cell precision configuration (2 to 50 digits) with instant exact-to-decimal toggles.
 
-- **Comprehensive Computer Algebra System (CAS)**:
-  - **Calculus**: Symbolic and numerical integration ($\int, \int_a^b$), differentiation ($d/dx$), limits ($\lim$), Taylor/Laurent series, and ODE solvers (`dsolve`).
-  - **Linear Algebra**: Matrix calculations (determinant, inverse, eigenvalues/eigenvectors, RREF, rank) with an interactive visual **Matrix Wizard**.
-  - **Algebra & Equation Solving**: Natural shorthand math parsing (`2x` $\to$ `2*x`, `x^2` $\to$ `x**2`), `solve()`, factorization, simplification, and assignment (`:=`).
-  - **2D Dynamic Plotter**: Function plots ($y=f(x)$), parametric curves $(x(t), y(t))$, polar graphs ($r=f(\theta)$), and automatic asymptote detection.
+### Symbolic Computation Engine
+- Powered by Python's SymPy library with automatic implicit multiplication (`2x` $\to$ `2*x`), operator parsing (`^` $\to$ `**`), and assignment semantics (`:=`).
+- Comprehensive calculus, linear algebra wizard, differential equations, and series approximations.
+- Integrated hardware engineering helpers for embedded systems and digital signal calculations.
 
-- **Embedded Systems & Engineering Math**:
-  - Bitwise logic masks, fixed-point Q-format (`to_q`, `from_q`), and IEEE-754 single/double precision breakdown.
-  - Microcontroller calculations: UART baud rate errors, timer prescaler intervals, PWM duty cycles, ADC/DAC quantization, and RC filter cutoffs.
+### Document and Vector Export
+- **Vector PDF Export**: 1:1 pagination maintaining exact fonts, hierarchy brackets, math typesetting, and embedded plots without interface chrome.
+- **Interchange Formats**: Native `.mw` XML worksheet structure, compilable LaTeX (`.tex`), and Markdown (`.md`).
 
-- **Full Document & PDF Export**:
-  - Direct 1:1 vector PDF export preserving all section/subsection hierarchy tree brackets, LaTeX formulas, and plots without UI clutter.
-  - Save and load `.mw` XML worksheet documents.
-  - Export to compilable LaTeX (`.tex`) and Markdown (`.md`).
+### Dynamic 2D Plotting
+- Cartesian function plots ($y = f(x)$), parametric curves ($x(t), y(t)$), and polar plots ($r = f(\theta)$).
+- Automatic singularity and asymptote handling with customizable axis bounds.
 
-- **Dark & Light Modes**: Seamless switching between Modern Slate Dark and Academic Light themes.
+### Themes
+- Built-in Modern Slate Dark and Academic Light color palettes with instant switching.
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
-| Action | Shortcut (macOS) | Shortcut (Win / Linux) |
+| Command | macOS | Windows / Linux |
 | :--- | :--- | :--- |
-| **Execute Active Cell** | `Enter` | `Enter` |
-| **Execute Entire Worksheet** | `Cmd + Shift + Enter` | `Ctrl + Shift + Enter` |
+| **Execute Cell** | `Enter` | `Enter` |
+| **Execute All Cells** | `Cmd + Shift + Enter` | `Ctrl + Shift + Enter` |
 | **Insert Cell Below** | `Alt + Enter` / `Cmd + J` | `Alt + Enter` / `Ctrl + J` |
 | **Insert Cell Above** | `Cmd + K` | `Ctrl + K` |
-| **Delete Cell** | `Del` / `Backspace` *(outside edit)* | `Del` / `Backspace` |
-| **Indent / Outdent Section** | `Tab` / `Shift + Tab` | `Tab` / `Shift + Tab` |
+| **Delete Cell** | `Backspace` / `Del` *(outside edit mode)* | `Backspace` / `Del` |
+| **Indent Section Level** | `Tab` | `Tab` |
+| **Outdent Section Level** | `Shift + Tab` | `Shift + Tab` |
 | **Toggle 1-D / 2-D Math Mode** | `F5` | `F5` |
 | **Open Matrix Wizard** | `Cmd + M` | `Ctrl + M` |
 | **Undo / Redo** | `Cmd + Z` / `Cmd + Shift + Z` | `Ctrl + Z` / `Ctrl + Y` |
-| **Save / Save As** | `Cmd + S` / `Cmd + Shift + S` | `Ctrl + S` / `Ctrl + Shift + S` |
-| **Print / Export PDF** | `Cmd + P` | `Ctrl + P` |
-| **Zoom In / Out / Reset** | `Cmd + +` / `Cmd + -` / `Cmd + 0` | `Ctrl + +` / `Ctrl + -` / `Ctrl + 0` |
+| **Save Document** | `Cmd + S` | `Ctrl + S` |
+| **Export Vector PDF** | `Cmd + P` | `Ctrl + P` |
+| **Zoom View** | `Cmd + +` / `Cmd + -` / `Cmd + 0` | `Ctrl + +` / `Ctrl + -` / `Ctrl + 0` |
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
-```
+```text
 OpenMath/
 ├── main.py                     # Primary desktop entry point
-├── run.sh                      # Universal Linux/macOS launcher
-├── run.bat                     # Windows launcher
+├── run.sh                      # Universal launcher for macOS and Linux
+├── run.bat                     # Windows launcher script
 ├── OpenMath.command            # macOS double-clickable Finder launcher
-├── run_web.py                  # Local WebApp server launcher
+├── run_web.py                  # Local development server for WebApp
 ├── requirements.txt            # Python dependencies
-├── index.html                  # WebApp entry redirect
-├── cas_engine/                 # Symbolic math & evaluation engine core
+├── index.html                  # Web entry point redirect
+├── cas_engine/                 # Core mathematical evaluation engine
 │   ├── engine.py               # Stateful SymPy evaluation engine
-│   ├── parser.py               # Shorthand math parser & syntax preprocessor
-│   ├── formatter.py            # LaTeX typesetter & numerical precision
+│   ├── parser.py               # Shorthand math parser and preprocessor
+│   ├── formatter.py            # LaTeX typesetter and numerical precision
 │   ├── plot_engine.py          # 2D coordinate calculation engine
-│   └── embedded.py             # Embedded systems & hardware calculations
-├── ui/                         # PyQt6 Desktop GUI
-│   ├── main_window.py          # Main application window & docks
-│   ├── worksheet_view.py       # Worksheet canvas & PDF export
-│   ├── worksheet_cell.py       # Cell widget, hierarchy trees, & 2D Math
+│   └── embedded.py             # Embedded systems and hardware calculations
+├── ui/                         # PyQt6 desktop user interface
+│   ├── main_window.py          # Main application window and menus
+│   ├── worksheet_view.py       # Worksheet canvas and vector PDF export
+│   ├── worksheet_cell.py       # Cell widgets, section trees, and 2D math
 │   ├── math_renderer.py        # High-DPI LaTeX renderer
-│   ├── matrix_dialog.py        # Matrix creator & preset wizard
-│   ├── palette_panel.py        # Math symbol & operation palettes
-│   └── theme.py                # Modern Slate Dark & Academic Light styles
-├── web/                        # WebApp client (GitHub Pages)
-│   ├── index.html              # WebApp main UI
-│   ├── js/                     # ES6 client logic (Worksheet, App, CAS Worker)
-│   └── css/                    # Responsive desktop & print styles
-├── resources/                  # Icons, fonts, and showcase screenshots
-├── scripts/                    # Platform shortcut installers & utilities
-└── tests/                      # Automated unit and GUI test suite
+│   ├── matrix_dialog.py        # Interactive matrix creation wizard
+│   ├── palette_panel.py        # Mathematical symbol and operator palette
+│   └── theme.py                # Academic Light and Modern Slate Dark themes
+├── web/                        # Web demo client (hosted on GitHub Pages)
+│   ├── index.html              # WebApp interface
+│   ├── js/                     # Client application logic and CAS worker
+│   └── css/                    # Responsive web styles
+├── resources/                  # Icons, fonts, and screenshots
+├── scripts/                    # Platform shortcut utilities
+└── tests/                      # Automated test suite
 ```
 
 ---
 
-## 🧪 Testing
+## Testing
 
-Run the automated test suite:
+Run the automated test suite with Python's standard test runner:
+
 ```bash
 python3 -m unittest discover -s tests
 ```
 
 ---
 
-## 📄 License
+## License
 
-MIT License. Open-source scientific desktop and web software.
+This project is licensed under the [MIT License](LICENSE).
