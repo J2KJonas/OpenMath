@@ -1,21 +1,21 @@
-<div align="center">
-  <img src="resources/AppIcon.png" alt="OpenMath Icon" width="100" height="100" />
+# OpenMath
 
-  # OpenMath
+<p align="center">
+  <img src="resources/AppIcon.png" alt="OpenMath Icon" width="140" />
+</p>
 
-  **Interactive Computer Algebra System & Technical Worksheet Environment**
+<p align="center">
+  <a href="https://j2kjonas.github.io/OpenMath/"><img src="https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome" alt="Web Demo" /></a>
+  <a href="https://github.com/J2KJonas/OpenMath"><img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square" alt="Platform" /></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python" alt="Python" /></a>
+  <a href="https://riverbankcomputing.com/software/pyqt/"><img src="https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square" alt="GUI" /></a>
+  <a href="https://www.sympy.org/"><img src="https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square" alt="CAS" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square" alt="License" /></a>
+</p>
 
-  An open-source interactive computer algebra system (CAS) and technical worksheet environment featuring symbolic computation, typeset mathematical rendering, dynamic plotting, and hierarchical document organization.
+An open-source interactive computer algebra system (CAS) and technical worksheet environment featuring symbolic computation, typeset mathematical rendering, dynamic plotting, and hierarchical document organization.
 
-  **Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
-
-  [![Web Demo](https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
-  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/J2KJonas/OpenMath)
-  [![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)](https://www.python.org/)
-  [![GUI](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)](https://riverbankcomputing.com/software/pyqt/)
-  [![CAS](https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square)](https://www.sympy.org/)
-  [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
-</div>
+**Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
 
 ---
 
