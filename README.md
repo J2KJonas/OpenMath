@@ -1,28 +1,29 @@
-# OpenMath
+<div align="center">
+  <img src="resources/AppIcon.png" alt="OpenMath Icon" width="100" height="100" />
 
-An open-source interactive computer algebra system (CAS) and technical worksheet environment featuring symbolic computation, typeset mathematical rendering, dynamic plotting, and hierarchical document organization.
+  # OpenMath
 
-**Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
+  **Interactive Computer Algebra System & Technical Worksheet Environment**
 
-[![Web Demo](https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/J2KJonas/OpenMath)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)](https://www.python.org/)
-[![GUI](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)](https://riverbankcomputing.com/software/pyqt/)
-[![CAS](https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square)](https://www.sympy.org/)
-[![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
+  An open-source interactive computer algebra system (CAS) and technical worksheet environment featuring symbolic computation, typeset mathematical rendering, dynamic plotting, and hierarchical document organization.
+
+  **Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
+
+  [![Web Demo](https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
+  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)](https://github.com/J2KJonas/OpenMath)
+  [![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)](https://www.python.org/)
+  [![GUI](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)](https://riverbankcomputing.com/software/pyqt/)
+  [![CAS](https://img.shields.io/badge/CAS-SymPy-orange?style=flat-square)](https://www.sympy.org/)
+  [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)](LICENSE)
+</div>
 
 ---
 
 ## Application Overview
 
 <div align="center">
-  <img src="resources/screenshots/openmath_desktop_light.png" alt="OpenMath Academic Light Theme - Symbolic Calculus" width="49%" />
-  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Linear Algebra and 2D Plotter" width="49%" />
-</div>
-
-<div align="center" style="margin-top: 10px;">
-  <img src="resources/screenshots/openmath_sections_tree.png" alt="OpenMath Hierarchical Section Folding" width="49%" />
-  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Dark Mode and Interactive Tables" width="49%" />
+  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Academic Light Theme with Dynamic Plotter and Matrix Algebra" width="49%" />
+  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Modern Slate Dark Theme with Interactive Data Tables" width="49%" />
 </div>
 
 ---
