@@ -25,11 +25,6 @@ An open-source interactive computer algebra system (CAS) and technical worksheet
   <img src="resources/screenshots/openmath_dark_showcase.gif" alt="OpenMath Interactive CAS Dark Mode Showcase" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
 </p>
 
-<div align="center">
-  <img src="resources/screenshots/openmath_desktop_calculus.png" alt="OpenMath Academic Light Theme with Dynamic Plotter and Matrix Algebra" width="49%" />
-  <img src="resources/screenshots/openmath_dark_tables.png" alt="OpenMath Modern Slate Dark Theme with Interactive Data Tables" width="49%" />
-</div>
-
 ---
 
 ## Quick Start
