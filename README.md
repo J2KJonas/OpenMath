@@ -4,7 +4,7 @@ An open-source interactive computer algebra system (CAS) focusing on symbolic co
 
 **Developed by [J2KJonas](https://github.com/J2KJonas) and [elomarjc](https://github.com/elomarjc)**
 
-[![WebApp](https://img.shields.io/badge/WebApp-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
+[![Web Demo](https://img.shields.io/badge/Web%20Demo-Live%20on%20GitHub%20Pages-brightgreen?style=flat-square&logo=googlechrome)](https://j2kjonas.github.io/OpenMath/)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Web-blue?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-brightgreen?style=flat-square&logo=python)
 ![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green?style=flat-square)
@@ -29,13 +29,17 @@ An open-source interactive computer algebra system (CAS) focusing on symbolic co
 
 ## 🚀 Quick Start
 
-### 🌐 Run in Browser (No Install Needed)
-OpenMath is accessible instantly online via GitHub Pages:
+### 🌐 Run in Browser (Web Demo — No Install Needed)
+
+> [!NOTE]
+> **Lightweight Web Demo**: The browser version is intended solely as a quick, zero-install preview. For actual workflows and full functionality, **the native desktop application is far superior and strongly recommended**—it features the complete Python/SymPy CAS engine, native PyQt6 interface, high-fidelity vector PDF exports, interactive tables, full plotting capabilities, and offline local file management.
+
+OpenMath is accessible instantly online as a demo via GitHub Pages:
 👉 **[Launch OpenMath WebApp](https://j2kjonas.github.io/OpenMath/)**
 
 ---
 
-### 💻 Run Desktop Application
+### 💻 Run Desktop Application (Recommended — Full Power)
 
 #### 🍎 macOS
 - **One-Click Launch**: Double-click **`OpenMath.command`** in Finder.
