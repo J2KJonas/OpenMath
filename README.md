@@ -22,7 +22,7 @@ An open-source interactive computer algebra system (CAS) and technical worksheet
 ## Application Overview
 
 <p align="center">
-  <img src="resources/screenshots/openmath_dark_showcase.gif" alt="OpenMath Interactive CAS Dark Mode Showcase" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
+  <img src="resources/screenshots/openmath_dark_showcase.gif" alt="OpenMath Interactive CAS Dark Mode Showcase" width="50%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" />
 </p>
 
 ---
